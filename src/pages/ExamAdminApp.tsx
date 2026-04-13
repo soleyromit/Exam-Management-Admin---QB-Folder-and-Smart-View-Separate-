@@ -88,11 +88,14 @@ export function ExamAdminApp({
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden', background: 'var(--sidebar)' }}>
         {activePage === 'question-bank' &&
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden', margin: '8px 8px 8px 8px', borderRadius: 12, background: 'white', boxShadow: '0 0 0 1px var(--border)' }}>
+            {/* Pass role + setter so QB can drive role switch from its own header toggle */}
             <QuestionBankFull
             onEditQuestion={() => setQuestionEditorOpen(true)}
             onToggleSidebar={() => setSidebarCollapsed((c) => !c)}
             leftOpen={qbLeftOpen}
-            onToggleLeft={() => setQbLeftOpen((v) => !v)} />
+            onToggleLeft={() => setQbLeftOpen((v) => !v)}
+            role={role}
+            onRoleChange={setRole} />
           
           </div>
         }
