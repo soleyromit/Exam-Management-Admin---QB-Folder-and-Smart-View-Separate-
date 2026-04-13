@@ -1,0 +1,3 @@
+export type Role = 'faculty' | 'dept-head' | 'contributor' | 'reviewer' | 'outcome-director' | 'inst-admin' | 'student';
+export type Phase = 'build' | 'marks' | 'publish' | 'live' | 'post-exam' | 'student-exam' | 'pa-dashboard';
+export type Page = 'home' | 'exams' | 'question-bank' | 'review-queue' | 'accommodations' | 'pa-dashboard' | 'outcome' | 'audit' | 'my-courses' | 'settings' | 'sections' | 'distribution' | 'import' | 'grading' | 'curriculum' | 'blueprint' | 'item-analysis';
