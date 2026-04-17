@@ -244,3 +244,32 @@ a:hover { color: var(--brand-dark); }
 .input-base:disabled { background-color: var(--muted); color: var(--muted-foreground); cursor: not-allowed; opacity: 0.6; }
 .input-error { border-color: var(--destructive) !important; }
 .input-error:focus { border-color: var(--destructive) !important; box-shadow: 0 0 0 3px color-mix(in oklch, var(--destructive) 20%, transparent) !important; }
+/* ── QB component layout utilities ─────────────────────────────────────── */
+/* Flexbox shorthands — inline style overrides still win (higher specificity) */
+.qb-flex-ac     { display: flex; align-items: center; }
+.qb-flex-center { display: flex; align-items: center; justify-content: center; }
+.qb-flex-col    { display: flex; flex-direction: column; }
+/* Text truncation */
+.qb-ellipsis    { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Menu primitives — hover handled via CSS, no inline onMouseEnter/Leave needed */
+.qb-menu-sep  { border-top: 1px solid #f1f5f9; margin: 3px 0; }
+.qb-menu-btn  {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 14px; width: 100%;
+  background: none; border: none; cursor: pointer;
+  font-size: 13px; text-align: left;
+}
+.qb-menu-btn:hover { background: #f8fafc; }
+/* Filter-field dropdown items — use var(--accent) on hover */
+.qb-filter-btn {
+  display: flex; align-items: center; gap: 12px;
+  padding: 8px 14px; width: 100%;
+  background: none; border: none; cursor: pointer;
+  font-size: 13px; text-align: left;
+}
+.qb-filter-btn:hover { background: var(--accent); }
+/* ── QB DataTable checkbox hover behavior ──────────────────────────────── */
+/* Hide row checkboxes by default; show on row hover or when checked */
+.qb-dt-wrap tbody tr .qb-row-cb { opacity: 0; transition: opacity 0.1s; }
+.qb-dt-wrap tbody tr:hover .qb-row-cb { opacity: 1; }
+.qb-dt-wrap tbody tr .qb-row-cb.qb-cb-checked { opacity: 1; }

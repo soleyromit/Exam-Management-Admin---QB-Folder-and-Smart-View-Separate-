@@ -1,19 +1,9 @@
 import React, { useState } from 'react';
-import {
-  Plus,
-  Search,
-  ChevronRight,
-  Clock,
-  CheckCircle2,
-  Play,
-  PenTool,
-  FileText,
-  Activity,
-  Lock,
-  Sparkles,
-  AlertCircle,
-  Settings2 } from
-'lucide-react';
+import { Plus, Search, Sparkles, MoreHorizontal, ArrowUp } from 'lucide-react';
+import { QS } from './QBData';
+import type { Question } from './QBData';
+import { DataTable, StatusBadge } from './DataTable';
+import type { Column } from './DataTable';
 /* EXAM LIST VIEW — All exams as a list (localhost Placements pattern)
    This is the missing page. Faculty need to see ALL their exams and create new ones.
    Each exam row shows: name, course, stage, date, students, readiness.
@@ -26,50 +16,6 @@ type Stage =
 'live' |
 'grading' |
 'complete';
-const ST: Record<
-  Stage,
-  {
-    label: string;
-    bg: string;
-    fg: string;
-  }> =
-{
-  draft: {
-    label: 'Draft',
-    bg: 'var(--muted)',
-    fg: 'var(--muted-foreground)'
-  },
-  building: {
-    label: 'Building',
-    bg: '#eff6ff',
-    fg: 'var(--chart-1)'
-  },
-  review: {
-    label: 'Review',
-    bg: '#fefce8',
-    fg: 'var(--warning)'
-  },
-  published: {
-    label: 'Published',
-    bg: '#f0edf9',
-    fg: 'var(--brand)'
-  },
-  live: {
-    label: 'Live',
-    bg: '#f0fdf4',
-    fg: 'var(--success)'
-  },
-  grading: {
-    label: 'Grading',
-    bg: '#fefce8',
-    fg: 'var(--warning)'
-  },
-  complete: {
-    label: 'Complete',
-    bg: 'var(--muted)',
-    fg: 'var(--muted-foreground)'
-  }
-};
 const EXAMS = [
 {
   id: 1,
@@ -147,6 +93,118 @@ const TABS = [
 'Grading',
 'Complete'] as
 const;
+const getQBInitials = (name?: string) => {
+  if (!name) return '??';
+  return name.
+  split(' ').
+  map((w) => w[0]).
+  join('').
+  slice(0, 2).
+  toUpperCase();
+};
+// Helper to get initials from exam name
+const getInitials = (name: string) => {
+  const words = name.split(' ');
+  if (words.length >= 2) {
+    return (words[0][0] + words[1][0]).toUpperCase();
+  }
+  return name.substring(0, 2).toUpperCase();
+};
+// Map exam stages to StatusBadge props
+const mapExamStageToStatus = (
+stage: Stage)
+: {
+  status: 'completed' | 'pending' | 'review' | 'rejected' | 'confirmed';
+  label: string;
+} => {
+  switch (stage) {
+    case 'draft':
+      return {
+        status: 'completed',
+        label: 'Draft'
+      };
+    // Gray
+    case 'building':
+      return {
+        status: 'review',
+        label: 'Building'
+      };
+    // Blue
+    case 'review':
+      return {
+        status: 'pending',
+        label: 'Review'
+      };
+    // Amber
+    case 'published':
+      return {
+        status: 'confirmed',
+        label: 'Published'
+      };
+    // Teal
+    case 'live':
+      return {
+        status: 'confirmed',
+        label: 'Live'
+      };
+    // Teal
+    case 'grading':
+      return {
+        status: 'pending',
+        label: 'Grading'
+      };
+    // Amber
+    case 'complete':
+      return {
+        status: 'completed',
+        label: 'Complete'
+      };
+    // Gray
+    default:
+      return {
+        status: 'completed',
+        label: stage
+      };
+  }
+};
+// Map QB status to StatusBadge props
+const mapQBStatusToStatus = (
+status: string)
+: {
+  status: 'completed' | 'pending' | 'review' | 'rejected' | 'confirmed';
+  label: string;
+} => {
+  switch (status) {
+    case 'Active':
+    case 'Ready':
+    case 'Approved':
+      return {
+        status: 'confirmed',
+        label: status
+      };
+    case 'In Review':
+      return {
+        status: 'review',
+        label: status
+      };
+    case 'Draft':
+    case 'Locked':
+      return {
+        status: 'completed',
+        label: status
+      };
+    case 'Flagged':
+      return {
+        status: 'rejected',
+        label: status
+      };
+    default:
+      return {
+        status: 'completed',
+        label: status
+      };
+  }
+};
 export function ExamListView({
   onOpenExam,
   onNewExam
@@ -156,12 +214,363 @@ export function ExamListView({
 }: {onOpenExam?: (name?: string) => void;onNewExam?: () => void;}) {
   const [activeTab, setActiveTab] = useState<string>('All');
   const [search, setSearch] = useState('');
+  const [tableView, setTableView] = useState<'exams' | 'questions'>('exams');
+  // Pagination state
+  const [examPage, setExamPage] = useState(1);
+  const [examPageSize, setExamPageSize] = useState(10);
+  const [qbPage, setQbPage] = useState(1);
+  const [qbPageSize, setQbPageSize] = useState(10);
   const filtered = EXAMS.filter((e) => {
     if (activeTab !== 'All' && e.stage !== activeTab.toLowerCase()) return false;
     if (search && !e.name.toLowerCase().includes(search.toLowerCase()))
     return false;
     return true;
   });
+  const filteredQuestions = QS.filter((q) => {
+    if (search && !q.title.toLowerCase().includes(search.toLowerCase()))
+    return false;
+    return true;
+  });
+  // Columns for Exams Table
+  const examColumns: Column<(typeof EXAMS)[0]>[] = [
+  {
+    id: 'checkbox',
+    label: '',
+    accessor: 'id',
+    width: '42px',
+    render: () =>
+    <input
+      type="checkbox"
+      onClick={(ev) => ev.stopPropagation()}
+      style={{
+        width: 16,
+        height: 16,
+        cursor: 'pointer',
+        accentColor: 'var(--primary)'
+      }} />
+
+
+  },
+  {
+    id: 'exam',
+    label: 'Exam',
+    accessor: 'name',
+    width: '24%',
+    sortable: true,
+    render: (val, row) =>
+    <div
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 10,
+        cursor: 'pointer'
+      }}
+      onClick={() => onOpenExam?.(row.name)}>
+      
+          <div
+        style={{
+          width: 28,
+          height: 28,
+          borderRadius: '50%',
+          background: '#FAE7F1',
+          color: '#970070',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          fontSize: 11,
+          fontWeight: 600,
+          flexShrink: 0
+        }}>
+        
+            {getInitials(row.name)}
+          </div>
+          <div
+        style={{
+          minWidth: 0
+        }}>
+        
+            <div
+          style={{
+            fontSize: 14,
+            fontWeight: 500,
+            color: '#0A0A0A',
+            marginBottom: 2,
+            whiteSpace: 'nowrap',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis'
+          }}>
+          
+              {row.name}
+            </div>
+            <div
+          style={{
+            fontSize: 11,
+            color: '#60636A'
+          }}>
+          
+              {row.course}
+            </div>
+          </div>
+        </div>
+
+  },
+  {
+    id: 'course',
+    label: 'Course',
+    accessor: 'course',
+    width: '12%'
+  },
+  {
+    id: 'questions',
+    label: 'Questions',
+    accessor: 'questions',
+    width: '18%',
+    render: (val, row) =>
+    <div>
+          <div
+        style={{
+          fontSize: 14,
+          fontWeight: 500,
+          color: '#0A0A0A',
+          marginBottom: 2
+        }}>
+        
+            {row.questions} questions
+          </div>
+          <div
+        style={{
+          fontSize: 11,
+          color: '#60636A',
+          whiteSpace: 'nowrap',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis'
+        }}>
+        
+            {row.blocker || '—'}
+          </div>
+        </div>
+
+  },
+  {
+    id: 'status',
+    label: 'Status',
+    accessor: 'stage',
+    width: '11%',
+    render: (val) => {
+      const mapped = mapExamStageToStatus(val as Stage);
+      return <StatusBadge status={mapped.status} label={mapped.label} />;
+    }
+  },
+  {
+    id: 'date',
+    label: 'Date',
+    accessor: 'date',
+    width: '10%'
+  },
+  {
+    id: 'students',
+    label: 'Students',
+    accessor: 'students',
+    width: '8%',
+    render: (val) => `${val} std`
+  },
+  {
+    id: 'ready',
+    label: 'Ready',
+    accessor: 'readiness',
+    width: '10%',
+    render: (val) => `${val}%`
+  },
+  {
+    id: 'actions',
+    label: '',
+    accessor: 'id',
+    width: '50px',
+    align: 'center',
+    render: () =>
+    <MoreHorizontal
+      style={{
+        width: 18,
+        height: 18,
+        color: '#0A0A0A',
+        cursor: 'pointer'
+      }}
+      onClick={(ev) => ev.stopPropagation()} />
+
+
+  }];
+
+  // Columns for Questions Table
+  const qbColumns: Column<Question>[] = [
+  {
+    id: 'checkbox',
+    label: '',
+    accessor: 'id',
+    width: '42px',
+    render: () =>
+    <input
+      type="checkbox"
+      onClick={(ev) => ev.stopPropagation()}
+      style={{
+        width: 16,
+        height: 16,
+        cursor: 'pointer',
+        accentColor: 'var(--primary)'
+      }} />
+
+
+  },
+  {
+    id: 'question',
+    label: 'Question',
+    accessor: 'title',
+    width: '22%',
+    sortable: true,
+    render: (val, row) =>
+    <div
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 10
+      }}>
+      
+          <div
+        style={{
+          width: 28,
+          height: 28,
+          borderRadius: '50%',
+          background: '#FAE7F1',
+          color: '#970070',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          fontSize: 11,
+          fontWeight: 600,
+          flexShrink: 0
+        }}>
+        
+            {getQBInitials(row.creator)}
+          </div>
+          <div
+        style={{
+          minWidth: 0
+        }}>
+        
+            <div
+          style={{
+            fontSize: 14,
+            fontWeight: 500,
+            color: '#0A0A0A',
+            marginBottom: 2,
+            whiteSpace: 'nowrap',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis'
+          }}>
+          
+              {row.title.length > 50 ?
+          row.title.slice(0, 50) + '...' :
+          row.title}
+            </div>
+            <div
+          style={{
+            fontSize: 11,
+            color: '#60636A'
+          }}>
+          
+              {row.code}
+            </div>
+          </div>
+        </div>
+
+  },
+  {
+    id: 'type',
+    label: 'Type',
+    accessor: 'type',
+    width: '12%'
+  },
+  {
+    id: 'folder',
+    label: 'Folder',
+    accessor: 'folder',
+    width: '16%',
+    render: (val, row) =>
+    <div>
+          <div
+        style={{
+          fontSize: 14,
+          fontWeight: 500,
+          color: '#0A0A0A',
+          marginBottom: 2,
+          whiteSpace: 'nowrap',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis'
+        }}>
+        
+            {row.folder}
+          </div>
+          <div
+        style={{
+          fontSize: 11,
+          color: '#60636A',
+          whiteSpace: 'nowrap',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis'
+        }}>
+        
+            {row.tags.join(', ')}
+          </div>
+        </div>
+
+  },
+  {
+    id: 'status',
+    label: 'Status',
+    accessor: 'status',
+    width: '11%',
+    render: (val) => {
+      const mapped = mapQBStatusToStatus(val as string);
+      return <StatusBadge status={mapped.status} label={mapped.label} />;
+    }
+  },
+  {
+    id: 'age',
+    label: 'Age',
+    accessor: 'age',
+    width: '9%'
+  },
+  {
+    id: 'difficulty',
+    label: 'Difficulty',
+    accessor: 'difficulty',
+    width: '9%'
+  },
+  {
+    id: 'creator',
+    label: 'Creator',
+    accessor: 'creator',
+    width: '10%',
+    render: (val) => val || '—'
+  },
+  {
+    id: 'actions',
+    label: '',
+    accessor: 'id',
+    width: '50px',
+    align: 'center',
+    render: () =>
+    <MoreHorizontal
+      style={{
+        width: 18,
+        height: 18,
+        color: '#0A0A0A',
+        cursor: 'pointer'
+      }}
+      onClick={(ev) => ev.stopPropagation()} />
+
+
+  }];
+
   return (
     <div className="flex-1 overflow-y-auto pt-[0px] pb-[0px]">
       {/* Header */}
@@ -345,28 +754,87 @@ export function ExamListView({
           padding: '6px 0'
         }}>
         
-        <button
+        <div
           style={{
             display: 'flex',
             alignItems: 'center',
-            gap: 4,
-            padding: '5px 10px',
-            fontSize: 12,
-            color: 'var(--muted-foreground)',
-            background: 'transparent',
-            border: '1px dashed var(--border-control)',
-            borderRadius: 6,
-            cursor: 'pointer'
+            gap: 12
           }}>
           
-          <Plus
+          <button
             style={{
-              width: 12,
-              height: 12
-            }} />
-          {' '}
-          Add filter
-        </button>
+              display: 'flex',
+              alignItems: 'center',
+              gap: 4,
+              padding: '5px 10px',
+              fontSize: 12,
+              color: 'var(--muted-foreground)',
+              background: 'transparent',
+              border: '1px dashed var(--border-control)',
+              borderRadius: 6,
+              cursor: 'pointer'
+            }}>
+            
+            <Plus
+              style={{
+                width: 12,
+                height: 12
+              }} />
+            {' '}
+            Add filter
+          </button>
+
+          {/* Table view toggle */}
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 0,
+              background: '#f4f4f5',
+              borderRadius: 8,
+              padding: 2
+            }}>
+            
+            <button
+              onClick={() => setTableView('exams')}
+              style={{
+                padding: '4px 12px',
+                fontSize: 12,
+                fontWeight: 500,
+                borderRadius: 6,
+                border: 'none',
+                cursor: 'pointer',
+                background: tableView === 'exams' ? '#ffffff' : 'transparent',
+                color: tableView === 'exams' ? '#0A0A0A' : '#60636A',
+                boxShadow:
+                tableView === 'exams' ? '0 1px 2px rgba(0,0,0,0.06)' : 'none'
+              }}>
+              
+              Exams
+            </button>
+            <button
+              onClick={() => setTableView('questions')}
+              style={{
+                padding: '4px 12px',
+                fontSize: 12,
+                fontWeight: 500,
+                borderRadius: 6,
+                border: 'none',
+                cursor: 'pointer',
+                background:
+                tableView === 'questions' ? '#ffffff' : 'transparent',
+                color: tableView === 'questions' ? '#0A0A0A' : '#60636A',
+                boxShadow:
+                tableView === 'questions' ?
+                '0 1px 2px rgba(0,0,0,0.06)' :
+                'none'
+              }}>
+              
+              Questions
+            </button>
+          </div>
+        </div>
+
         <div
           style={{
             position: 'relative'
@@ -386,7 +854,9 @@ export function ExamListView({
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search exams..."
+            placeholder={
+            tableView === 'exams' ? 'Search exams...' : 'Search questions...'
+            }
             style={{
               paddingLeft: 28,
               paddingRight: 10,
@@ -403,191 +873,43 @@ export function ExamListView({
         </div>
       </div>
 
-      {/* Table */}
-      <div>
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: '1fr 100px 80px 80px 70px 50px',
-            alignItems: 'center',
-            padding: '0 16px',
-            height: 44
-          }}>
-          
-          <div
-            style={{
-              fontSize: 12,
-              fontWeight: 500,
-              color: 'var(--muted-foreground)'
-            }}>
-            
-            Exam
-          </div>
-          <div
-            style={{
-              fontSize: 12,
-              fontWeight: 500,
-              color: 'var(--muted-foreground)'
-            }}>
-            
-            Stage
-          </div>
-          <div
-            style={{
-              fontSize: 12,
-              fontWeight: 500,
-              color: 'var(--muted-foreground)'
-            }}>
-            
-            Date
-          </div>
-          <div
-            style={{
-              fontSize: 12,
-              fontWeight: 500,
-              color: 'var(--muted-foreground)'
-            }}>
-            
-            Students
-          </div>
-          <div
-            style={{
-              fontSize: 12,
-              fontWeight: 500,
-              color: 'var(--muted-foreground)'
-            }}>
-            
-            Ready
-          </div>
-          <div></div>
+      {/* Exams Table */}
+      {tableView === 'exams' &&
+      <div
+        style={{
+          margin: '0 16px'
+        }}>
+        
+          <DataTable
+          columns={examColumns}
+          data={filtered}
+          currentPage={examPage}
+          pageSize={examPageSize}
+          totalItems={filtered.length}
+          onPageChange={setExamPage}
+          onPageSizeChange={setExamPageSize} />
+        
         </div>
-        {filtered.map((e, i) => {
-          const st = ST[e.stage];
-          return (
-            <button
-              key={e.id}
-              onClick={() => onOpenExam?.(e.name)}
-              style={{
-                display: 'grid',
-                gridTemplateColumns: '1fr 100px 80px 80px 70px 50px',
-                alignItems: 'center',
-                width: '100%',
-                padding: '0 16px',
-                height: 56,
-                textAlign: 'left',
-                background: 'transparent',
-                border: 'none',
-                borderTop: '1px solid var(--border)',
-                cursor: 'pointer'
-              }}
-              onMouseEnter={(ev) =>
-              ev.currentTarget.style.background = '#fafafa'
-              }
-              onMouseLeave={(ev) =>
-              ev.currentTarget.style.background = 'transparent'
-              }>
-              
-              <div>
-                <div
-                  style={{
-                    fontSize: 13,
-                    fontWeight: 500,
-                    color: 'var(--foreground)'
-                  }}>
-                  
-                  {e.name}
-                </div>
-                <div
-                  style={{
-                    fontSize: 12,
-                    color: 'var(--muted-foreground)'
-                  }}>
-                  
-                  {e.course} · {e.questions} questions
-                  {e.blocker ? ` · ${e.blocker}` : ''}
-                </div>
-              </div>
-              <span
-                style={{
-                  fontSize: 12,
-                  fontWeight: 500,
-                  padding: '2px 8px',
-                  borderRadius: 6,
-                  background: st.bg,
-                  color: st.fg,
-                  display: 'inline-block',
-                  width: 'fit-content'
-                }}>
-                
-                {st.label}
-              </span>
-              <span
-                style={{
-                  fontSize: 12,
-                  color: 'var(--muted-foreground)'
-                }}>
-                
-                {e.date}
-              </span>
-              <span
-                style={{
-                  fontSize: 12,
-                  color: 'var(--muted-foreground)'
-                }}>
-                
-                {e.students}
-              </span>
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 4
-                }}>
-                
-                <div
-                  style={{
-                    width: 40,
-                    height: 3,
-                    borderRadius: 2,
-                    background: '#f0f0f0',
-                    overflow: 'hidden'
-                  }}>
-                  
-                  <div
-                    style={{
-                      height: '100%',
-                      borderRadius: 2,
-                      width: `${e.readiness}%`,
-                      background:
-                      e.readiness > 80 ?
-                      'var(--success)' :
-                      e.readiness > 50 ?
-                      'var(--warning)' :
-                      'var(--destructive)'
-                    }} />
-                  
-                </div>
-                <span
-                  style={{
-                    fontSize: 10,
-                    fontWeight: 500,
-                    color: 'var(--muted-foreground)'
-                  }}>
-                  
-                  {e.readiness}%
-                </span>
-              </div>
-              <ChevronRight
-                style={{
-                  width: 14,
-                  height: 14,
-                  color: 'var(--border)'
-                }} />
-              
-            </button>);
+      }
 
-        })}
-      </div>
+      {/* Questions Table (QB View) */}
+      {tableView === 'questions' &&
+      <div
+        style={{
+          margin: '0 16px'
+        }}>
+        
+          <DataTable
+          columns={qbColumns}
+          data={filteredQuestions}
+          currentPage={qbPage}
+          pageSize={qbPageSize}
+          totalItems={filteredQuestions.length}
+          onPageChange={setQbPage}
+          onPageSizeChange={setQbPageSize} />
+        
+        </div>
+      }
     </div>);
 
 }

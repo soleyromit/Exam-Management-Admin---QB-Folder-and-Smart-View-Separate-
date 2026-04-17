@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState, useRef, Fragment } from 'react';
+import { QBView } from './QBView';
 import { ImportWizardModal } from './ImportWizard';
 import { NewQuestionModal } from './NewQuestionModal';
 import { QuestionRowPanel } from './QuestionRowPanel';
@@ -20,7 +21,92 @@ import type { Question, FolderNode, SVItem } from './QBData';
 import { StatusBadge, TypeBadge, DiffBadge, PBisCell } from './QBHelpers';
 import { ShareQuestionModal } from './ShareQuestionModal';
 import type { Role } from '../types';
-const CURRENT_USER = 'Dr. Patel';
+import {
+  CourseBadge,
+  PersonalBadge,
+  FacultyAccessBanner,
+  FacultyOnboardingBanner,
+  CreatorCell,
+  InlineFolderInput,
+  TreeGuides } from
+'./QBInlineHelpers';
+import {
+  RequestEditModal,
+  EditImpactWarningModal,
+  CollaborateModal,
+  SectionOverlapModal,
+  CrossDeptBlockModal } from
+'./QBFacultyModals';
+import { AdminFolderRow, FacultyFolderRow } from './QBFolderRows';
+import type { FolderRowCtx } from './QBFolderRows';
+import { QBQuestionRow, QB_GRID } from './QBQuestionRow';
+import type { QRowCtx } from './QBQuestionRow';
+import { AssignCoursesModal } from './QBAssignModal';
+import type { FacultyAccessMap } from './QBAssignModal';
+// Phase 3 — trust levels added to each persona
+const PERSONAS = [
+{
+  id: 'admin',
+  name: 'Admin',
+  role: 'dept-head' as const,
+  initials: 'AD',
+  color: '#7c3aed',
+  trustLevel: 'senior' as const
+},
+{
+  id: 'dr-patel',
+  name: 'Dr. Patel',
+  role: 'faculty' as const,
+  initials: 'AP',
+  color: '#0891b2',
+  trustLevel: 'senior' as const
+},
+{
+  id: 'dr-chen',
+  name: 'Dr. Chen',
+  role: 'faculty' as const,
+  initials: 'SC',
+  color: '#059669',
+  trustLevel: 'senior' as const
+},
+{
+  id: 'dr-lee',
+  name: 'Dr. Lee',
+  role: 'faculty' as const,
+  initials: 'PL',
+  color: '#d97706',
+  trustLevel: 'mid' as const
+},
+{
+  id: 'dr-ramirez',
+  name: 'Dr. Ramirez',
+  role: 'faculty' as const,
+  initials: 'MR',
+  color: '#dc2626',
+  trustLevel: 'mid' as const
+},
+{
+  id: 'dr-kim',
+  name: 'Dr. Kim',
+  role: 'faculty' as const,
+  initials: 'JK',
+  color: '#0f766e',
+  trustLevel: 'junior' as const
+},
+{
+  id: 'dr-wells',
+  name: 'Dr. Wells',
+  role: 'faculty' as const,
+  initials: 'DW',
+  color: '#64748b',
+  trustLevel: 'junior' as const
+}];
+
+const FOLDER_TO_COURSE_CODE: Record<string, string> = {
+  'f-phar101': 'phar101',
+  'f-biol201': 'biol201',
+  'f-skel101': 'skel101'
+};
 const VERSION_HISTORY: Record<
   string,
   {
@@ -46,369 +132,27 @@ const VERSION_HISTORY: Record<
 
   q2: [
   {
-    v: 3,
-    label: 'Updated answer key',
-    date: 'Mar 15, 2026',
-    author: 'Dr. Chen'
-  },
-  {
     v: 2,
-    label: 'Added distractors',
-    date: 'Feb 1, 2026',
-    author: 'Dr. Chen'
+    label: 'Co-edit: revised distractors',
+    date: 'Feb 20, 2026',
+    author: 'Dr. Lee'
   },
   {
     v: 1,
     label: 'Initial creation',
     date: 'Nov 5, 2025',
-    author: 'Dr. Ramirez'
+    author: 'Dr. Patel'
   }],
 
   q3: [
   {
-    v: 2,
-    label: 'Peer review edits',
-    date: 'Mar 28, 2026',
-    author: 'Dr. Lee'
-  },
-  {
     v: 1,
-    label: 'Initial creation',
+    label: 'Initial creation — draft',
     date: 'Dec 1, 2025',
-    author: 'Dr. Lee'
+    author: 'Dr. Patel'
   }]
 
 };
-// ── Course chip badge ─────────────────────────────────────────────────────────────
-function CourseBadge() {
-  return (
-    <span
-      style={{
-        display: 'inline-flex',
-        alignItems: 'center',
-        gap: 3,
-        padding: '1px 6px',
-        borderRadius: 10,
-        fontSize: 9,
-        fontWeight: 700,
-        background: '#ede9fe',
-        color: '#6d28d9',
-        letterSpacing: '0.04em',
-        textTransform: 'uppercase',
-        flexShrink: 0
-      }}>
-      
-      <i
-        className="fa-solid fa-graduation-cap"
-        style={{
-          fontSize: 8
-        }} />
-      
-      Course
-    </span>);
-
-}
-// ── Personal tag badge ────────────────────────────────────────────────────────────
-function PersonalBadge() {
-  return (
-    <span
-      style={{
-        display: 'inline-flex',
-        alignItems: 'center',
-        gap: 3,
-        padding: '1px 6px',
-        borderRadius: 10,
-        fontSize: 9,
-        fontWeight: 700,
-        background: '#dbeafe',
-        color: '#1d4ed8',
-        letterSpacing: '0.04em',
-        textTransform: 'uppercase',
-        flexShrink: 0
-      }}>
-      
-      <i
-        className="fa-solid fa-lock"
-        style={{
-          fontSize: 8
-        }} />
-      
-      Personal
-    </span>);
-
-}
-// ── Access banner for faculty ──────────────────────────────────────────────────────
-function FacultyAccessBanner({ courseNames }: {courseNames: string[];}) {
-  return (
-    <div
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: 10,
-        padding: '7px 16px',
-        background: '#f0f9ff',
-        borderBottom: '1px solid #bae6fd',
-        flexShrink: 0
-      }}>
-      
-      <i
-        className="fa-regular fa-circle-info"
-        style={{
-          fontSize: 13,
-          color: '#0284c7',
-          flexShrink: 0
-        }} />
-      
-      <span
-        style={{
-          fontSize: 12,
-          color: '#0369a1'
-        }}>
-        
-        <strong>QB Access:</strong>{' '}
-        {courseNames.map((n, i) =>
-        <span key={n}>
-            <span
-            style={{
-              fontWeight: 500
-            }}>
-            
-              {n}
-            </span>
-            {i < courseNames.length - 1 ? ', ' : ''}
-          </span>
-        )}{' '}
-        &mdash; Questions outside your access are hidden.
-      </span>
-    </div>);
-
-}
-// ── Creator cell ──────────────────────────────────────────────────────────────
-function CreatorCell({
-  creator,
-  collaborator
-
-
-
-}: {creator?: string;collaborator?: string;}) {
-  const display = creator || collaborator || 'Faculty';
-  const edited = collaborator && creator && collaborator !== creator;
-  const initials = display.
-  replace('Dr. ', '').
-  replace('Prof. ', '').
-  split(' ').
-  map((n: string) => n[0] || '').
-  join('').
-  slice(0, 2).
-  toUpperCase();
-  return (
-    <div
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: 6,
-        minWidth: 0
-      }}>
-      
-      <span
-        style={{
-          width: 22,
-          height: 22,
-          borderRadius: '50%',
-          background: 'var(--brand)',
-          display: 'inline-flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          fontSize: 9,
-          fontWeight: 700,
-          color: 'var(--brand-foreground)',
-          flexShrink: 0
-        }}>
-        
-        {initials}
-      </span>
-      <div
-        style={{
-          minWidth: 0
-        }}>
-        
-        <span
-          style={{
-            fontSize: 12,
-            color: 'var(--foreground)',
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap',
-            display: 'block'
-          }}>
-          
-          {display}
-        </span>
-        {edited &&
-        <span
-          style={{
-            fontSize: 10,
-            color: 'var(--muted-foreground)',
-            display: 'block'
-          }}>
-          
-            ed. {collaborator}
-          </span>
-        }
-      </div>
-    </div>);
-
-}
-// ── InlineFolderInput: at MODULE level to prevent remount on re-render ─────────────
-function InlineFolderInput({
-  parentId,
-  depth = 0,
-  activePid,
-  name,
-  onSetName,
-  onConfirm,
-  onCancel,
-  inputRef,
-  br,
-  fg,
-  mfg
-
-
-
-
-
-
-
-
-
-
-
-
-}: {parentId: string | null;depth?: number;activePid: string | null | undefined;name: string;onSetName: (v: string) => void;onConfirm: () => void;onCancel: () => void;inputRef: React.RefObject<HTMLInputElement>;br: string;fg: string;mfg: string;}) {
-  if (activePid !== parentId) return null;
-  return (
-    <div
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: 6,
-        padding: `5px 8px 5px ${8 + depth * 16}px`,
-        borderRadius: 6,
-        marginBottom: 1,
-        background: `color-mix(in oklch,${br} 6%,white)`,
-        border: `1px solid ${br}`
-      }}>
-      
-      <span
-        style={{
-          width: 12,
-          flexShrink: 0
-        }} />
-      
-      <i
-        className="fa-regular fa-folder"
-        style={{
-          fontSize: 12,
-          color: br,
-          flexShrink: 0,
-          lineHeight: 1
-        }} />
-      
-      <input
-        ref={inputRef}
-        value={name}
-        onChange={(e) => onSetName(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter') onConfirm();
-          if (e.key === 'Escape') onCancel();
-        }}
-        onBlur={onConfirm}
-        placeholder="Folder name…"
-        style={{
-          flex: 1,
-          fontSize: 12,
-          border: 'none',
-          outline: 'none',
-          background: 'transparent',
-          color: fg
-        }} />
-      
-      <button
-        onMouseDown={(e) => {
-          e.preventDefault();
-          onConfirm();
-        }}
-        style={{
-          background: 'none',
-          border: 'none',
-          cursor: 'pointer',
-          padding: 2,
-          display: 'flex',
-          color: br
-        }}>
-        
-        <i
-          className="fa-regular fa-circle-check"
-          style={{
-            fontSize: 12,
-            lineHeight: 1
-          }} />
-        
-      </button>
-      <button
-        onMouseDown={(e) => {
-          e.preventDefault();
-          onCancel();
-        }}
-        style={{
-          background: 'none',
-          border: 'none',
-          cursor: 'pointer',
-          padding: 2,
-          display: 'flex',
-          color: mfg
-        }}>
-        
-        <i
-          className="fa-regular fa-xmark"
-          style={{
-            fontSize: 12,
-            lineHeight: 1
-          }} />
-        
-      </button>
-    </div>);
-
-}
-// ── Tree guide lines helper ────────────────────────────────────────────────────────
-function TreeGuides({ depth }: {depth: number;}) {
-  if (depth === 0) return null;
-  return (
-    <>
-      {Array.from(
-        {
-          length: depth
-        },
-        (_, i) =>
-        <span
-          key={i}
-          style={{
-            position: 'absolute',
-            left: `${8 + i * 16 + 14}px`,
-            top: 0,
-            bottom: 0,
-            width: '1px',
-            background: 'var(--border)',
-            opacity: 0.5,
-            pointerEvents: 'none'
-          }} />
-
-
-      )}
-    </>);
-
-}
-// ── Main component ───────────────────────────────────────────────────────────────
 export function QuestionBankFull({
   onEditQuestion,
   leftOpen: leftOpenProp,
@@ -428,27 +172,64 @@ export function QuestionBankFull({
   const toggleLeft = () => {
     onToggleLeft ? onToggleLeft() : _slo((v) => !v);
   };
-  const isFaculty = roleProp === 'faculty';
+  const [activePersonaId, setActivePersonaId] = useState('admin');
+  const [personaMenuOpen, setPersonaMenuOpen] = useState(false);
+  const activePersona =
+  PERSONAS.find((p) => p.id === activePersonaId) || PERSONAS[0];
+  const CURRENT_USER = activePersona.name;
+  const isFaculty = activePersona.role === 'faculty';
   const isAdmin = !isFaculty;
-  const [questions] = useState<Question[]>(QS);
+  // Phase 3 — senior = admin OR faculty with senior trust level
+  const isSenior = isAdmin || activePersona.trustLevel === 'senior';
+  // Phase 1 — questions is now mutable (needed for Promote to Pool)
+  const [questions, setQuestions] = useState<Question[]>(QS);
   const [folders, setFolders] = useState<FolderNode[]>(INIT_FOLDERS);
   const [views, setViews] = useState<SVItem[]>(INIT_VIEWS);
   const [assignments, setAssignments] = useState(INIT_ASSIGNMENTS);
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(
-    new Set(['f-pharm', 'f-cardio', 'f-cardio-arr', 'f-courses'])
+    new Set([
+    'f-phar101',
+    'f-biol201',
+    'f-skel101',
+    'f-phar-2026',
+    'f-biol-2026']
+    )
   );
   const [selectedFolder, setSelectedFolder] = useState<string | null>(null);
   const [folderYearFilter, setFolderYearFilter] = useState<string | null>(null);
+  const [facultyStatusFilterMap, setFacultyStatusFilterMap] = useState(
+    {} as Record<string, 'approved' | 'all'>
+  );
+  const [transferCourseOnly, setTransferCourseOnly] = useState(false);
+  const [moreOptionsOpen, setMoreOptionsOpen] = useState(false);
+  const [moreOptionsPos, setMoreOptionsPos] = useState<{
+    x: number;
+    y: number;
+  } | null>(null);
+  const [headerMenuOpen, setHeaderMenuOpen] = useState(false);
+  const [headerMenuPos, setHeaderMenuPos] = useState<{
+    x: number;
+    y: number;
+  } | null>(null);
   const [inlineFolderParentId, setInlineFolderParentId] = useState<
     string | null | undefined>(
     undefined);
   const [inlineFolderName, setInlineFolderName] = useState('');
+  const [inlineFolderIsQSet, setInlineFolderIsQSet] = useState(false);
   const inlineInputRef = useRef<HTMLInputElement>(null);
   const [renamingFolderId, setRenamingFolderId] = useState<string | null>(null);
   const [renamingFolderName, setRenamingFolderName] = useState('');
   const [folderMenuId, setFolderMenuId] = useState<string | null>(null);
   const [rowMenuId, setRowMenuId] = useState<string | null>(null);
+  const [rowMenuPos, setRowMenuPos] = useState<{
+    x: number;
+    y: number;
+  } | null>(null);
   const [versionPopoverId, setVersionPopoverId] = useState<string | null>(null);
+  const [versionMenuPos, setVersionMenuPos] = useState<{
+    x: number;
+    y: number;
+  } | null>(null);
   const [dragFolderId, setDragFolderId] = useState<string | null>(null);
   const [dragOverFolderId, setDragOverFolderId] = useState<string | null>(null);
   const [draggedQId, setDraggedQId] = useState<string | null>(null);
@@ -458,10 +239,16 @@ export function QuestionBankFull({
   const [activeTabId, setActiveTabId] = useState('qa-all');
   const [hoverTabId, setHoverTabId] = useState<string | null>(null);
   const [searchText, setSearchText] = useState('');
+  const [searchOpen, setSearchOpen] = useState(false);
   const [fieldFilters, setFieldFilters] = useState<FieldFilters>({});
   const [sortBy] = useState<'title' | 'age' | 'status'>('title');
   const [filterSheetOpen, setFilterSheetOpen] = useState(false);
-  const [searchOpen, setSearchOpen] = useState(false);
+  const [requestEditId, setRequestEditId] = useState<string | null>(null);
+  const [editImpactQ, setEditImpactQ] = useState<Question | null>(null);
+  const [shortlistedQIds, setShortlistedQIds] = useState<Set<string>>(
+    new Set(['q1', 'q3'])
+  );
+  const [showOnlyShortlisted, setShowOnlyShortlisted] = useState(false);
   const [selected, setSelected] = useState(new Set<string>());
   const [rowHoverId, setRowHoverId] = useState<string | null>(null);
   const [pinnedQIds, setPinnedQIds] = useState<Set<string>>(new Set());
@@ -484,6 +271,7 @@ export function QuestionBankFull({
     type: 'folder' | 'smart view';
   } | null>(null);
   const [shareTarget, setShareTarget] = useState<{
+    id: string;
     name: string;
     type: 'folder' | 'view';
   } | null>(null);
@@ -492,29 +280,79 @@ export function QuestionBankFull({
     null
   );
   const [shareQId, setShareQId] = useState<string | null>(null);
+  const [collaborateOpen, setCollaborateOpen] = useState(false);
+  const [adminAssignOpen, setAdminAssignOpen] = useState(false);
+  const [autoCollectedFolderIds, setAutoCollectedFolderIds] = useState<
+    Set<string>>(
+    new Set());
+  const [autoCollectOpen, setAutoCollectOpen] = useState(false);
+  const [questionAccessMap, setQuestionAccessMap] = useState(
+    {} as Record<string, Record<string, 'view' | 'edit'>>
+  );
+  const [facultyAssignments, setFacultyAssignments] = useState({
+    'Dr. Patel': ['f-phar101', 'f-biol201'],
+    'Dr. Chen': ['f-biol201', 'f-skel101'],
+    'Dr. Lee': ['f-phar101'],
+    'Dr. Ramirez': ['f-phar101', 'f-skel101'],
+    'Dr. Kim': ['f-biol201'],
+    'Dr. Wells': []
+  } as Record<string, string[]>);
+  const [facultyAccessMap, setFacultyAccessMap] = useState<FacultyAccessMap>({
+    'Dr. Patel': {
+      'f-phar101': 'edit',
+      'f-biol201': 'view'
+    },
+    'Dr. Chen': {
+      'f-biol201': 'edit',
+      'f-skel101': 'view'
+    },
+    'Dr. Lee': {
+      'f-phar101': 'view'
+    },
+    'Dr. Ramirez': {
+      'f-phar101': 'view',
+      'f-skel101': 'edit'
+    },
+    'Dr. Kim': {
+      'f-biol201': 'view'
+    },
+    'Dr. Wells': {}
+  });
+  const [sectionOverlapQ, setSectionOverlapQ] = useState<Question | null>(null);
+  const [crossDeptBlockQ, setCrossDeptBlockQ] = useState<Question | null>(null);
+  const tabBarWrapRef = useRef<HTMLDivElement>(null);
+  const [overflowIdx, setOverflowIdx] = useState(4);
+  const [overflowOpen, setOverflowOpen] = useState(false);
+  const [chevronHoverId, setChevronHoverId] = useState<string | null>(null);
+  const [filterFieldOpen, setFilterFieldOpen] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
+  const FACULTY_COURSES = (facultyAssignments[CURRENT_USER] || []).
+  map((fid) => FOLDER_TO_COURSE_CODE[fid]).
+  filter(Boolean) as string[];
   useEffect(() => {
     if (inlineFolderParentId !== undefined)
     setTimeout(() => inlineInputRef.current?.focus(), 50);
   }, [inlineFolderParentId]);
-  // ── Faculty accessible folder IDs ───────────────────────────────────────────────
   const facultyAccessibleFolderIds = useMemo(() => {
-    const myQIds = new Set(questions.map((q) => q.id));
+    const myFolderIds = new Set(facultyAssignments[CURRENT_USER] || []);
     const result = new Set<string>();
     folders.forEach((f) => {
-      if (f.isCourse) result.add(f.id);
-    });
-    Object.entries(assignments).forEach(([fid, qids]) => {
-      if (qids.some((id) => myQIds.has(id))) result.add(fid);
+      if (myFolderIds.has(f.id)) result.add(f.id);
     });
     folders.forEach((f) => {
-      if (result.has(f.id) && f.parentId) result.add(f.parentId);
+      if (f.parentId && myFolderIds.has(f.parentId)) result.add(f.id);
+    });
+    folders.forEach((f) => {
+      if (f.parentId && result.has(f.parentId)) result.add(f.id);
     });
     return result;
-  }, [folders, questions, assignments]);
-  const facultyCourseNames = useMemo(
-    () => folders.filter((f) => f.isCourse && !f.parentId).map((f) => f.name),
-    [folders]
-  );
+  }, [folders, facultyAssignments, activePersonaId]);
+  const facultyCourseNames = useMemo(() => {
+    const myFolderIds = new Set(facultyAssignments[CURRENT_USER] || []);
+    return folders.
+    filter((f) => f.isCourse && !f.parentId && myFolderIds.has(f.id)).
+    map((f) => f.name);
+  }, [folders, facultyAssignments, activePersonaId]);
   const getChildIds = (fid: string): string[] => {
     const ch = folders.filter((f) => f.parentId === fid);
     return [fid, ...ch.flatMap((c) => getChildIds(c.id))];
@@ -545,30 +383,130 @@ export function QuestionBankFull({
     }),
     [questions]
   );
-  const myCount = useMemo(
-    () => questions.filter((q) => q.collaborator === CURRENT_USER).length,
-    [questions]
+  // ── Phase 1 visibility helper ─────────────────────────────────────────────
+  // Admin: all non-private questions.
+  // Faculty: Saved questions + their own Drafts (creator) + questions they collaborate on.
+  const computeVisibleQs = (
+  qs: Question[],
+  user: string,
+  isF: boolean)
+  : Question[] =>
+  qs.filter((q) => {
+    if ((q.tags || []).includes('private')) return false;
+    if (!isF) return true; // admin sees everything
+    return (
+      q.status === 'Saved' ||
+      q.creator === user ||
+      q.collaborator === user);
+
+  });
+
+  // Count of questions visible to the current persona (used for "All Questions" tab)
+  const allQuestionsCount = useMemo(
+    () => computeVisibleQs(questions, CURRENT_USER, isFaculty).length,
+    [questions, isFaculty, CURRENT_USER]
   );
+
+  // Count of questions the current user owns or collaborates on (sidebar My Questions)
+  const myQuestionsCount = useMemo(
+    () =>
+    computeVisibleQs(questions, CURRENT_USER, isFaculty).filter(
+      (q) => q.creator === CURRENT_USER || q.collaborator === CURRENT_USER
+    ).length,
+    [questions, isFaculty, CURRENT_USER]
+  );
+
+  // Live folder counts: per-folder question count filtered by current persona visibility.
+  // Replaces the stale static f.count from INIT_FOLDERS.
+  const liveFolderCounts = useMemo(() => {
+    const visibleIds = new Set(
+      computeVisibleQs(questions, CURRENT_USER, isFaculty).map((q) => q.id)
+    );
+    const counts: Record<string, number> = {};
+    for (const [fid, qids] of Object.entries(assignments)) {
+      counts[fid] = qids.filter((qid) => visibleIds.has(qid)).length;
+    }
+    folders.forEach((f) => {
+      if (!(f.id in counts)) counts[f.id] = 0;
+    });
+    return counts;
+  }, [questions, assignments, folders, isFaculty, CURRENT_USER]);
+
+  // Live smart-view counts: recomputes every view count from its criteria on the
+  // current visible question set. Replaces the stale static v.count from INIT_VIEWS.
+  const liveViewCounts = useMemo(() => {
+    const base = computeVisibleQs(questions, CURRENT_USER, isFaculty);
+    const counts: Record<string, number> = {};
+    for (const sv of views) {
+      if (!sv.autoUpdate) {
+        counts[sv.id] = sv.count; // snapshot views keep their stored count
+        continue;
+      }
+      let r = [...base];
+      const c = sv.criteria;
+      // sv-saved: only show Saved questions
+      if (sv.id === 'sv-saved') r = r.filter((q) => q.status === 'Saved');
+      // personal views: only the current user's questions
+      if (sv.personal)
+      r = r.filter(
+        (q) => q.creator === CURRENT_USER || q.collaborator === CURRENT_USER
+      );
+      if (c.difficulties?.length)
+      r = r.filter((q) => c.difficulties.includes(q.difficulty || ''));
+      if (c.blooms?.length)
+      r = r.filter((q) => c.blooms.includes(q.blooms || ''));
+      if (c.types?.length) r = r.filter((q) => c.types.includes(q.type || ''));
+      if (c.tags?.length)
+      r = r.filter((q) => c.tags!.some((t) => (q.tags || []).includes(t)));
+      if (c.usage === 'never') r = r.filter((q) => (q.usage ?? 0) === 0);
+      if (c.usage === 'low')
+      r = r.filter((q) => (q.usage ?? 0) >= 1 && (q.usage ?? 0) <= 2);
+      if (c.usage === 'multi') r = r.filter((q) => (q.usage ?? 0) >= 3);
+      if (c.pbis === 'low')
+      r = r.filter((q) => q.pbis !== null && q.pbis < 0.3);
+      if (c.pbis === 'very-low')
+      r = r.filter((q) => q.pbis !== null && q.pbis < 0.2);
+      if (c.pbis === 'high')
+      r = r.filter((q) => q.pbis !== null && q.pbis >= 0.4);
+      counts[sv.id] = r.length;
+    }
+    return counts;
+  }, [questions, views, isFaculty, CURRENT_USER]);
   const selectedFolderIsLifetimeRepo = selectedFolder ?
   folders.find((f) => f.id === selectedFolder)?.isLifetimeRepo === true :
   false;
-  const availableSemesters = selectedFolderIsLifetimeRepo ?
-  folders.
-  filter((f) => f.parentId === selectedFolder && f.courseYear).
-  map((f) => f.courseYear as string) :
-  [];
+  const showOnboarding =
+  isFaculty && !selectedFolder && facultyAccessibleFolderIds.size === 0;
+  const newContentFolderIds = autoCollectedFolderIds;
   const filteredQuestions = useMemo(() => {
+    if (activeTabId === 'sv-shortlist')
+    return questions.filter((q) => shortlistedQIds.has(q.id));
     let r = [...questions];
+    r = r.filter((q) => !(q.tags || []).includes('private'));
     if (selectedFolder) {
       const qIds = new Set(getFolderQIds(selectedFolder));
       r = r.filter((q) => qIds.has(q.id));
     }
     if (activeTabId === 'qa-my') {
-      r = r.filter((q) => q.collaborator === CURRENT_USER);
-    } else if (activeTabId !== 'qa-all') {
+      r = r.filter(
+        (q) => q.collaborator === CURRENT_USER || q.creator === CURRENT_USER
+      );
+    }
+    // Phase 1: sv-pending — review workflow not yet built
+    else if (activeTabId === 'sv-pending') {
+
+      /* Phase 2 — review workflow not yet built */} else if (activeTabId !== 'qa-all') {
       const sv = views.find((v) => v.id === activeTabId);
       if (sv) {
         const c = sv.criteria;
+        // sv-saved: restrict to Saved status only
+        if (sv.id === 'sv-saved') r = r.filter((q) => q.status === 'Saved');
+        // personal views: restrict to questions the current user owns or collaborates on
+        if (sv.personal)
+        r = r.filter(
+          (q) =>
+          q.creator === CURRENT_USER || q.collaborator === CURRENT_USER
+        );
         if (c.difficulties?.length)
         r = r.filter((q) => c.difficulties.includes(q.difficulty || ''));
         if (c.blooms?.length)
@@ -598,6 +536,41 @@ export function QuestionBankFull({
         r = r.filter((q) => iQIds.has(q.id));
       }
     }
+    if (isFaculty) {
+      // Phase 1 faculty visibility:
+      //   - All Saved questions in the workspace
+      //   - The faculty member's own Drafts (creator)
+      //   - Questions they collaborate on (collaborator)
+      r = r.filter(
+        (q) =>
+        q.status === 'Saved' ||
+        q.creator === CURRENT_USER ||
+        q.collaborator === CURRENT_USER
+      );
+      // Scope to assigned folder trees when no specific folder is selected.
+      // Prevents external/unassigned members (e.g. view-only external examiners)
+      // from seeing questions across courses they weren't added to.
+      if (!selectedFolder) {
+        const myFolderIds = facultyAssignments[CURRENT_USER] || [];
+        if (myFolderIds.length > 0) {
+          const accessibleQIds = new Set<string>();
+          myFolderIds.forEach((fid: string) =>
+          getFolderQIds(fid).forEach((id: string) => accessibleQIds.add(id))
+          );
+          r = r.filter(
+            (q) =>
+            accessibleQIds.has(q.id) ||
+            q.creator === CURRENT_USER ||
+            q.collaborator === CURRENT_USER
+          );
+        } else {
+          // No folder assignments (external/view-only member) — only own content
+          r = r.filter(
+            (q) => q.creator === CURRENT_USER || q.collaborator === CURRENT_USER
+          );
+        }
+      }
+    }
     if (searchText.trim()) {
       const s = searchText.toLowerCase();
       r = r.filter(
@@ -612,6 +585,7 @@ export function QuestionBankFull({
       r = r.filter((q) => vals.some((v) => (q.tags || []).includes(v)));else
       r = r.filter((q) => vals.includes((q as any)[field] || ''));
     });
+    if (showOnlyShortlisted) r = r.filter((q) => shortlistedQIds.has(q.id));
     return r.sort((a, b) => {
       const aP = pinnedQIds.has(a.id) ? 0 : 1,
         bP = pinnedQIds.has(b.id) ? 0 : 1;
@@ -633,8 +607,29 @@ export function QuestionBankFull({
   folders,
   pinnedQIds,
   folderYearFilter,
-  selectedFolderIsLifetimeRepo]
+  selectedFolderIsLifetimeRepo,
+  isFaculty,
+  showOnlyShortlisted,
+  shortlistedQIds,
+  activePersonaId,
+  questionAccessMap,
+  CURRENT_USER,
+  facultyStatusFilterMap,
+  facultyAssignments]
   );
+  const facultyEditAccessQIds = useMemo(() => {
+    if (!isFaculty) return new Set<string>();
+    const editFolderIds = new Set(
+      Object.entries(facultyAccessMap[CURRENT_USER] || {}).
+      filter(([, level]) => level === 'edit').
+      map(([fid]) => fid)
+    );
+    const qIds = new Set<string>();
+    editFolderIds.forEach((fid) => {
+      getFolderQIds(fid).forEach((id) => qIds.add(id));
+    });
+    return qIds;
+  }, [isFaculty, CURRENT_USER, facultyAccessMap, assignments, folders]);
   const togglePin = (id: string) =>
   setPinnedQIds((prev) => {
     const n = new Set(prev);
@@ -644,37 +639,127 @@ export function QuestionBankFull({
   useEffect(() => {
     setFolderYearFilter(null);
   }, [selectedFolder]);
+  useEffect(() => {
+    const el = tabBarWrapRef.current;
+    if (!el) return;
+    const measure = () => {
+      const pills = Array.from(
+        el.querySelectorAll<HTMLElement>('[data-tab-pill]')
+      );
+      if (!pills.length) {
+        setOverflowIdx(999);
+        return;
+      }
+      const avail = el.offsetWidth - 96;
+      let total = 6,
+        idx = 999;
+      for (let i = 0; i < pills.length; i++) {
+        total += pills[i].offsetWidth + 2;
+        if (total > avail - 60 && idx === 999) {
+          idx = i;
+          break;
+        }
+      }
+      setOverflowIdx(idx);
+    };
+    const obs = new ResizeObserver(measure);
+    obs.observe(el);
+    measure();
+    return () => obs.disconnect();
+  }, [views.length, shortlistedQIds.size]);
   const toggleFolderExpand = (id: string) =>
   setExpandedFolders((prev) => {
     const n = new Set(prev);
     n.has(id) ? n.delete(id) : n.add(id);
     return n;
   });
+  const COURSE_CREATE_SENTINEL = '__course__';
   const handleInlineFolderCreate = () => {
     const name = inlineFolderName.trim();
     if (!name) {
       setInlineFolderParentId(undefined);
       setInlineFolderName('');
+      setInlineFolderIsQSet(false);
       return;
     }
     const newId = `f-${Date.now()}`;
-    setFolders((prev) => [
-    ...prev,
-    {
-      id: newId,
-      name,
-      parentId: inlineFolderParentId ?? null,
-      count: 0
-    }]
-    );
-    if (inlineFolderParentId)
-    setExpandedFolders((prev) => new Set([...prev, inlineFolderParentId]));
+    const isCourseCreate = inlineFolderParentId === COURSE_CREATE_SENTINEL;
+    const pid = isCourseCreate ? null : inlineFolderParentId ?? null;
+    setFolders((prev) => {
+      const nf = {
+        id: newId,
+        name,
+        parentId: pid,
+        count: 0,
+        ...(isCourseCreate ?
+        {
+          isCourse: true
+        } :
+        {}),
+        ...(inlineFolderIsQSet ?
+        {
+          isQuestionSet: true,
+          collaborators: []
+        } :
+        {})
+      };
+      if (!pid) {
+        const li = prev.reduce(
+          (li, f, i) => !f.parentId && !f.isCourse ? i : li,
+          -1
+        );
+        if (li === -1) return [...prev, nf];
+        const a = [...prev];
+        a.splice(li + 1, 0, nf);
+        return a;
+      } else {
+        const li = prev.reduce((li, f, i) => f.parentId === pid ? i : li, -1);
+        const a = [...prev];
+        if (li === -1) {
+          const pi = a.findIndex((f) => f.id === pid);
+          a.splice(pi + 1, 0, nf);
+        } else {
+          a.splice(li + 1, 0, nf);
+        }
+        return a;
+      }
+    });
+    if (pid) {
+      setFacultyAccessMap((prev) => {
+        const u = {
+          ...prev
+        };
+        Object.entries(u).forEach(([fn, am]) => {
+          if (am[pid]) {
+            u[fn] = {
+              ...am,
+              [newId]: am[pid]
+            };
+          }
+        });
+        return u;
+      });
+      setFacultyAssignments((prev) => {
+        const u = {
+          ...prev
+        };
+        Object.entries(u).forEach(([fn, fids]) => {
+          if (fids.includes(pid)) {
+            u[fn] = [...fids, newId];
+          }
+        });
+        return u;
+      });
+      setExpandedFolders((prev) => new Set([...prev, pid]));
+    }
     setInlineFolderParentId(undefined);
     setInlineFolderName('');
+    setInlineFolderIsQSet(false);
   };
   const cancelInlineFolder = () => {
     setInlineFolderParentId(undefined);
     setInlineFolderName('');
+    setInlineFolderIsQSet(false);
   };
   const handleFolderRename = (fid: string) => {
     const name = renamingFolderName.trim();
@@ -698,15 +783,15 @@ export function QuestionBankFull({
     if (!dragF || !dropF || dragF.parentId !== dropF.parentId) return;
     setFolders((prev) => {
       const pid = dragF.parentId;
-      const siblings = prev.filter((f) => f.parentId === pid),
-        others = prev.filter((f) => f.parentId !== pid);
-      const fi = siblings.findIndex((f) => f.id === dragId),
-        ti = siblings.findIndex((f) => f.id === dropId);
+      const sibs = prev.filter((f) => f.parentId === pid),
+        oth = prev.filter((f) => f.parentId !== pid);
+      const fi = sibs.findIndex((f) => f.id === dragId),
+        ti = sibs.findIndex((f) => f.id === dropId);
       if (fi < 0 || ti < 0) return prev;
-      const r = [...siblings];
+      const r = [...sibs];
       const [m] = r.splice(fi, 1);
       r.splice(ti, 0, m);
-      return [...others, ...r];
+      return [...oth, ...r];
     });
   };
   const handleCreateSV = (name: string, criteria: SmartCriteria) => {
@@ -761,8 +846,8 @@ export function QuestionBankFull({
     tags: 'hashtag',
     collaborator: 'user',
     folder: 'folder'
-  } as Record<string, string>)[
-  field] || 'filter';
+  } as
+  Record<string, string>)[field] || 'filter';
   const handleDeleteTab = (id: string) => {
     setViews((prev) => prev.filter((v) => v.id !== id));
     if (activeTabId === id) setActiveTabId('qa-all');
@@ -822,3349 +907,788 @@ export function QuestionBankFull({
   const br = 'var(--brand)',
     bdr = 'var(--border)',
     fg = 'var(--foreground)',
-    mfg = 'var(--muted-foreground)',
-    surf = 'var(--surface)',
-    fh = 'var(--font-heading)';
-  const rootQBFolders = folders.filter((f) => !f.parentId && !f.isCourse);
+    mfg = 'var(--muted-foreground)';
+  const rootQBFolders = folders.filter(
+    (f) => !f.parentId && !f.isCourse && !f.isPrivateSpace && !f.isQuestionSet
+  );
   const rootCourseFolders = folders.filter((f) => !f.parentId && f.isCourse);
-  const childFolders = (pid: string) =>
-  folders.filter((f) => f.parentId === pid);
+  // Phase 2 — Question Set folders for sidebar
+  const rootQSetFolders = folders.filter((f) => !f.parentId && f.isQuestionSet);
+  const availableSemesters = selectedFolderIsLifetimeRepo ?
+  folders.
+  filter((f) => f.parentId === selectedFolder && f.courseYear).
+  map((f) => f.courseYear as string) :
+  [];
   const allSelectedPinned =
   selected.size > 0 && [...selected].every((id) => pinnedQIds.has(id));
-  const visibleViews = isFaculty ?
-  views.filter((v) => !v.isDefault || v.personal !== false) :
-  views;
+  const visibleViews = isFaculty ? views.filter((v) => !v.isAdminView) : views;
   const tabItems = [
   {
     id: 'qa-all',
     name: 'All Questions',
-    count: questions.length,
+    // Live count: only questions visible to the current persona
+    count: allQuestionsCount,
     isSystem: true,
-    personal: false
+    personal: false,
+    isShortlistTab: false,
+    isAdminView: false
+  }];
+
+  const systemTabs = tabItems.filter((t) => t.isSystem);
+  const nonSystemTabs = tabItems.filter((t) => !t.isSystem);
+  const maxNonSystem = Math.max(0, overflowIdx - systemTabs.length);
+  const visibleNonSystem = nonSystemTabs.slice(0, maxNonSystem);
+  const hiddenNonSystem = nonSystemTabs.slice(maxNonSystem);
+  const visibleTabs = [...systemTabs, ...visibleNonSystem];
+  const hiddenTabs = hiddenNonSystem;
+  const activeIsHidden = hiddenTabs.some((t) => t.id === activeTabId);
+  const filterFields = [
+  {
+    field: 'type',
+    label: 'Type',
+    icon: 'tag'
   },
   {
-    id: 'qa-my',
-    name: 'My Questions',
-    count: myCount,
-    isSystem: true,
-    personal: false
+    field: 'status',
+    label: 'Status',
+    icon: 'circle-dot'
   },
-  ...views.map((v) => ({
-    id: v.id,
-    name: v.name,
-    count: v.count,
-    isSystem: false,
-    personal: v.personal ?? false
-  }))];
+  {
+    field: 'difficulty',
+    label: 'Difficulty',
+    icon: 'gauge-high'
+  },
+  {
+    field: 'blooms',
+    label: "Bloom's Level",
+    icon: 'brain'
+  },
+  {
+    field: 'tags',
+    label: 'Tags',
+    icon: 'hashtag'
+  },
+  {
+    field: 'collaborator',
+    label: 'Creator',
+    icon: 'user'
+  },
+  {
+    field: 'folder',
+    label: 'Folder',
+    icon: 'folder'
+  }];
 
-  // ── AdminFolderRow ──────────────────────────────────────────────────────────────
-  function AdminFolderRow({ f, depth = 0 }: {f: FolderNode;depth?: number;}) {
-    const isExpanded = expandedFolders.has(f.id),
-      isSelected = selectedFolder === f.id;
-    const children = childFolders(f.id);
-    const [hov, setHov] = useState(false);
-    const isRenaming = renamingFolderId === f.id;
-    const isDragQOver = dragQOverFolderId === f.id,
-      isFDragOver = dragOverFolderId === f.id;
-    const showGrip = hov && !f.locked && !isRenaming;
-    const lockFolder = () => {
-      setFolders((p) =>
-      p.map((x) =>
-      x.id === f.id ?
-      {
-        ...x,
-        locked: true
-      } :
-      x
-      )
-      );
-      setFolderMenuId(null);
-    };
-    const unlockFolder = () => {
-      setFolders((p) =>
-      p.map((x) =>
-      x.id === f.id ?
-      {
-        ...x,
-        locked: false
-      } :
-      x
-      )
-      );
-      setFolderMenuId(null);
-    };
-    return (
-      <Fragment>
-        <div
-          draggable={!isRenaming && !f.locked}
-          onDragStart={(e) => {
-            setDragFolderId(f.id);
-            e.dataTransfer.effectAllowed = 'move';
-          }}
-          onDragEnd={() => {
-            setDragFolderId(null);
-            setDragOverFolderId(null);
-          }}
-          onDragOver={(e) => {
-            if (draggedQId) {
-              e.preventDefault();
-              e.stopPropagation();
-              setDragQOverFolderId(f.id);
-              return;
-            }
-            if (dragFolderId && dragFolderId !== f.id) {
-              const df = folders.find((ff) => ff.id === dragFolderId);
-              if (df?.parentId === f.parentId) {
-                e.preventDefault();
-                setDragOverFolderId(f.id);
-              }
-            }
-          }}
-          onDragLeave={() => {
-            if (dragQOverFolderId === f.id) setDragQOverFolderId(null);
-            if (dragOverFolderId === f.id) setDragOverFolderId(null);
-          }}
-          onDrop={(e) => {
-            e.preventDefault();
-            if (draggedQId) {
-              setAssignments((prev) => {
-                const n = {
-                  ...prev
-                };
-                n[f.id] = [...new Set([...(n[f.id] || []), draggedQId!])];
-                return n;
-              });
-              setDraggedQId(null);
-              setDragQOverFolderId(null);
-              if (!isExpanded) toggleFolderExpand(f.id);
-              return;
-            }
-            if (dragFolderId && dragFolderId !== f.id) {
-              handleReorderFolders(dragFolderId, f.id);
-              setDragFolderId(null);
-              setDragOverFolderId(null);
-            }
-          }}
-          onMouseEnter={() => setHov(true)}
-          onMouseLeave={() => {
-            setHov(false);
-            if (folderMenuId === f.id) setFolderMenuId(null);
-          }}
-          onClick={() => {
-            if (isRenaming) return;
-            setFolderMenuId(null);
-            setSelectedFolder(f.id);
-            setActiveTabId('qa-all');
-          }}
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 4,
-            padding: `5px 8px 5px ${8 + depth * 16}px`,
-            borderRadius: 6,
-            cursor: 'pointer',
-            marginBottom: 1,
-            background: isDragQOver ?
-            `color-mix(in oklch,${br} 18%,white)` :
-            isFDragOver ?
-            `color-mix(in oklch,${br} 10%,white)` :
-            isSelected ?
-            `color-mix(in oklch,${br} 10%,white)` :
-            hov ?
-            'var(--accent)' :
-            'transparent',
-            outline: isDragQOver ? `2px dashed ${br}` : 'none',
-            transition: 'background .1s',
-            position: 'relative'
-          }}>
-          
-          <TreeGuides depth={depth} />
-          <span
-            style={{
-              width: 12,
-              flexShrink: 0,
-              display: 'flex',
-              alignItems: 'center',
-              visibility: showGrip ? 'visible' : 'hidden',
-              cursor: showGrip ? 'grab' : 'default',
-              color: mfg,
-              opacity: 0.55
-            }}>
-            
-            <i
-              className="fa-regular fa-grip-vertical"
-              style={{
-                fontSize: 10,
-                lineHeight: 1
-              }} />
-            
-          </span>
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              if (!f.locked) toggleFolderExpand(f.id);
-            }}
-            style={{
-              background: 'none',
-              border: 'none',
-              cursor: 'pointer',
-              padding: 2,
-              display: 'flex',
-              color: mfg,
-              flexShrink: 0
-            }}>
-            
-            {children.length > 0 ?
-            isExpanded ?
-            <i
-              className="fa-regular fa-chevron-down"
-              style={{
-                fontSize: 11,
-                lineHeight: 1
-              }} /> :
-
-
-            <i
-              className="fa-regular fa-chevron-right"
-              style={{
-                fontSize: 11,
-                lineHeight: 1
-              }} /> :
-
-
-
-            <span
-              style={{
-                width: 12
-              }} />
-
-            }
-          </button>
-          {f.locked ?
-          <i
-            className="fa-solid fa-lock"
-            style={{
-              fontSize: 11,
-              color: '#f59e0b',
-              flexShrink: 0
-            }} /> :
-
-          f.isCourse ?
-          f.courseYear ?
-          <i
-            className={`${hov || isSelected ? 'fa-solid' : 'fa-regular'} fa-calendar-days`}
-            style={{
-              fontSize: 12,
-              color: hov || isSelected ? '#7c3aed' : mfg,
-              flexShrink: 0
-            }} /> :
-
-
-          <i
-            className={`${hov || isSelected ? 'fa-solid' : 'fa-regular'} fa-graduation-cap`}
-            style={{
-              fontSize: 12,
-              color: hov || isSelected ? '#7c3aed' : mfg,
-              flexShrink: 0
-            }} /> :
-
-
-          isExpanded ?
-          <i
-            className="fa-solid fa-folder-open"
-            style={{
-              fontSize: 12,
-              color: br,
-              flexShrink: 0
-            }} /> :
-
-
-          <i
-            className={`${hov || isSelected ? 'fa-solid' : 'fa-regular'} fa-folder`}
-            style={{
-              fontSize: 12,
-              color: hov || isSelected ? br : mfg,
-              flexShrink: 0
-            }} />
-
-          }
-          {isRenaming ?
-          <input
-            autoFocus
-            value={renamingFolderName}
-            onChange={(e) => setRenamingFolderName(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') handleFolderRename(f.id);
-              if (e.key === 'Escape') {
-                setRenamingFolderId(null);
-                setRenamingFolderName('');
-              }
-            }}
-            onBlur={() => handleFolderRename(f.id)}
-            onClick={(e) => e.stopPropagation()}
-            style={{
-              flex: 1,
-              fontSize: 12,
-              border: `1px solid ${br}`,
-              borderRadius: 4,
-              padding: '1px 4px',
-              outline: 'none',
-              background: 'white',
-              color: fg,
-              minWidth: 0
-            }} /> :
-
-
-          <span
-            style={{
-              flex: 1,
-              fontSize: 12,
-              fontWeight: isSelected ? 600 : 400,
-              color: f.locked ? mfg : isSelected ? br : fg,
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              whiteSpace: 'nowrap',
-              minWidth: 0,
-              fontStyle: f.locked ? 'italic' : 'normal'
-            }}>
-            
-              {f.name}
-            </span>
-          }
-          {f.isCourse && depth === 0 && !isRenaming && <CourseBadge />}
-          <span
-            style={{
-              fontSize: 11,
-              color: mfg,
-              flexShrink: 0
-            }}>
-            
-            {f.count}
-          </span>
-          {hov && !isRenaming &&
-          <div
-            style={{
-              position: 'relative',
-              flexShrink: 0
-            }}
-            onClick={(e) => e.stopPropagation()}>
-            
-              <button
-              onClick={(e) => {
-                e.stopPropagation();
-                setFolderMenuId(folderMenuId === f.id ? null : f.id);
-              }}
-              style={{
-                background: 'none',
-                border: 'none',
-                cursor: 'pointer',
-                padding: '2px 4px',
-                borderRadius: 4,
-                display: 'flex',
-                color: mfg
-              }}
-              onMouseEnter={(e) => e.currentTarget.style.color = fg}
-              onMouseLeave={(e) => e.currentTarget.style.color = mfg}>
-              
-                <i
-                className={`${folderMenuId === f.id ? 'fa-solid' : 'fa-regular'} fa-ellipsis`}
-                style={{
-                  fontSize: 13,
-                  lineHeight: 1
-                }} />
-              
-              </button>
-              {folderMenuId === f.id &&
-            <div
-              onMouseDown={(e) => e.stopPropagation()}
-              style={{
-                position: 'absolute',
-                right: 0,
-                top: '100%',
-                marginTop: 2,
-                background: 'var(--card)',
-                border: `1px solid ${bdr}`,
-                borderRadius: 8,
-                boxShadow: '0 4px 16px rgba(0,0,0,0.12)',
-                minWidth: 172,
-                zIndex: 100,
-                overflow: 'hidden',
-                paddingTop: 4,
-                paddingBottom: 4
-              }}>
-              
-                  {f.locked ?
-              <>
-                      <div
-                  style={{
-                    padding: '6px 12px 4px',
-                    fontSize: 10,
-                    fontWeight: 700,
-                    color: mfg,
-                    textTransform: 'uppercase',
-                    letterSpacing: '0.07em'
-                  }}>
-                  
-                        Locked
-                      </div>
-                      <button
-                  onClick={unlockFolder}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 8,
-                    padding: '7px 12px',
-                    width: '100%',
-                    background: 'none',
-                    border: 'none',
-                    cursor: 'pointer',
-                    color: fg,
-                    fontSize: 12,
-                    textAlign: 'left'
-                  }}
-                  onMouseEnter={(e) =>
-                  e.currentTarget.style.background = 'var(--accent)'
-                  }
-                  onMouseLeave={(e) =>
-                  e.currentTarget.style.background = 'none'
-                  }>
-                  
-                        <i
-                    className="fa-regular fa-lock-open"
-                    style={{
-                      fontSize: 12,
-                      color: '#f59e0b',
-                      lineHeight: 1
-                    }} />
-                  
-                        Unlock folder
-                      </button>
-                    </> :
-
-              [
-              {
-                icon: 'pen',
-                label: 'Rename',
-                action: () => {
-                  setRenamingFolderId(f.id);
-                  setRenamingFolderName(f.name);
-                  setFolderMenuId(null);
-                }
-              },
-              {
-                icon: 'folder-plus',
-                label: 'Add Subfolder',
-                action: () => {
-                  setExpandedFolders((p) => new Set([...p, f.id]));
-                  setInlineFolderParentId(f.id);
-                  setInlineFolderName('');
-                  setFolderMenuId(null);
-                }
-              },
-              {
-                icon: 'share-nodes',
-                label: 'Share',
-                action: () => {
-                  setShareTarget({
-                    name: f.name,
-                    type: 'folder'
-                  });
-                  setFolderMenuId(null);
-                }
-              },
-              'divider' as const,
-              {
-                icon: 'lock',
-                label: 'Lock folder',
-                action: lockFolder,
-                amber: true
-              },
-              'divider' as const,
-              {
-                icon: 'box-archive',
-                label: 'Archive',
-                action: () => {
-                  setArchiveFolder(f.id);
-                  setFolderMenuId(null);
-                }
-              },
-              {
-                icon: 'trash-can',
-                label: 'Delete',
-                action: () => {
-                  setDeleteItem({
-                    id: f.id,
-                    name: f.name,
-                    type: 'folder'
-                  });
-                  setFolderMenuId(null);
-                },
-                danger: true
-              }].
-              map((item, i) => {
-                if (item === 'divider')
-                return (
-                  <div
-                    key={i}
-                    style={{
-                      borderTop: `1px solid ${bdr}`,
-                      margin: '4px 0'
-                    }} />);
-
-
-                const it = item as {
-                  icon: string;
-                  label: string;
-                  action: () => void;
-                  danger?: boolean;
-                  amber?: boolean;
-                };
-                const col = it.danger ?
-                '#ef4444' :
-                it.amber ?
-                '#f59e0b' :
-                fg;
-                const icol = it.danger ?
-                '#ef4444' :
-                it.amber ?
-                '#f59e0b' :
-                mfg;
-                return (
-                  <button
-                    key={i}
-                    onClick={it.action}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 8,
-                      padding: '7px 12px',
-                      width: '100%',
-                      background: 'none',
-                      border: 'none',
-                      cursor: 'pointer',
-                      color: col,
-                      fontSize: 12,
-                      textAlign: 'left'
-                    }}
-                    onMouseEnter={(e) =>
-                    e.currentTarget.style.background = 'var(--accent)'
-                    }
-                    onMouseLeave={(e) =>
-                    e.currentTarget.style.background = 'none'
-                    }>
-                    
-                          <i
-                      className={`fa-regular fa-${it.icon}`}
-                      style={{
-                        fontSize: 12,
-                        color: icol,
-                        lineHeight: 1
-                      }} />
-                    
-                          {it.label}
-                        </button>);
-
-              })
-              }
-                </div>
-            }
-            </div>
-          }
-        </div>
-        {isExpanded &&
-        <InlineFolderInput
-          parentId={f.id}
-          depth={depth + 1}
-          activePid={inlineFolderParentId}
-          name={inlineFolderName}
-          onSetName={setInlineFolderName}
-          onConfirm={handleInlineFolderCreate}
-          onCancel={cancelInlineFolder}
-          inputRef={inlineInputRef}
-          br={br}
-          fg={fg}
-          mfg={mfg} />
-
-        }
-        {isExpanded &&
-        children.map((c) =>
-        <AdminFolderRow key={c.id} f={c} depth={depth + 1} />
-        )}
-      </Fragment>);
-
-  }
-  // ── FacultyFolderRow ────────────────────────────────────────────────────────────
-  function FacultyFolderRow({
-    f,
-    depth = 0
-
-
-
-  }: {f: FolderNode;depth?: number;}) {
-    const isExpanded = expandedFolders.has(f.id),
-      isSelected = selectedFolder === f.id;
-    const children = childFolders(f.id).filter((c) =>
-    facultyAccessibleFolderIds.has(c.id)
-    );
-    const [hov, setHov] = useState(false);
-    return (
-      <Fragment>
-        <div
-          onClick={() => {
-            setFolderMenuId(null);
-            setSelectedFolder(f.id);
-            setActiveTabId('qa-all');
-          }}
-          onMouseEnter={() => setHov(true)}
-          onMouseLeave={() => setHov(false)}
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 4,
-            padding: `5px 8px 5px ${8 + depth * 16}px`,
-            borderRadius: 6,
-            cursor: 'pointer',
-            marginBottom: 1,
-            background: isSelected ?
-            `color-mix(in oklch,${br} 10%,white)` :
-            hov ?
-            'var(--accent)' :
-            'transparent',
-            transition: 'background .1s',
-            position: 'relative'
-          }}>
-          
-          <TreeGuides depth={depth} />
-          <span
-            style={{
-              width: 12,
-              flexShrink: 0
-            }} />
-          
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              toggleFolderExpand(f.id);
-            }}
-            style={{
-              background: 'none',
-              border: 'none',
-              cursor: 'pointer',
-              padding: 2,
-              display: 'flex',
-              color: mfg,
-              flexShrink: 0
-            }}>
-            
-            {children.length > 0 ?
-            isExpanded ?
-            <i
-              className="fa-regular fa-chevron-down"
-              style={{
-                fontSize: 11,
-                lineHeight: 1
-              }} /> :
-
-
-            <i
-              className="fa-regular fa-chevron-right"
-              style={{
-                fontSize: 11,
-                lineHeight: 1
-              }} /> :
-
-
-
-            <span
-              style={{
-                width: 12
-              }} />
-
-            }
-          </button>
-          {f.isCourse ?
-          f.courseYear ?
-          <i
-            className={`${isSelected ? 'fa-solid' : 'fa-regular'} fa-calendar-days`}
-            style={{
-              fontSize: 12,
-              color: isSelected ? '#7c3aed' : mfg,
-              flexShrink: 0
-            }} /> :
-
-
-          <i
-            className={`${isSelected ? 'fa-solid' : 'fa-regular'} fa-graduation-cap`}
-            style={{
-              fontSize: 12,
-              color: isSelected ? '#7c3aed' : mfg,
-              flexShrink: 0
-            }} /> :
-
-
-          isExpanded ?
-          <i
-            className="fa-solid fa-folder-open"
-            style={{
-              fontSize: 12,
-              color: br,
-              flexShrink: 0
-            }} /> :
-
-
-          <i
-            className={`${isSelected ? 'fa-solid' : 'fa-regular'} fa-folder`}
-            style={{
-              fontSize: 12,
-              color: isSelected ? br : mfg,
-              flexShrink: 0
-            }} />
-
-          }
-          <span
-            style={{
-              flex: 1,
-              fontSize: 12,
-              fontWeight: isSelected ? 600 : 400,
-              color: isSelected ? br : fg,
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              whiteSpace: 'nowrap',
-              minWidth: 0
-            }}>
-            
-            {f.name}
-          </span>
-          {f.isCourse && depth === 0 && <CourseBadge />}
-          <span
-            style={{
-              fontSize: 11,
-              color: mfg,
-              flexShrink: 0
-            }}>
-            
-            {f.count}
-          </span>
-        </div>
-        {isExpanded &&
-        children.map((c) =>
-        <FacultyFolderRow key={c.id} f={c} depth={depth + 1} />
-        )}
-      </Fragment>);
-
-  }
-  // ── Main render ──────────────────────────────────────────────────────────────────
-  return (
-    <div
+  const handleAutoCollect = (folderId: string) => {
+    setAutoCollectedFolderIds((prev) => new Set([...prev, folderId]));
+  };
+  // Phase 3 — trust level map for row rendering
+  const personaTrustLevels: Record<string, 'junior' | 'mid' | 'senior'> =
+  Object.fromEntries(PERSONAS.map((p) => [p.name, p.trustLevel]));
+  const rowCtx: QRowCtx = {
+    selected,
+    rowMenuId,
+    rowMenuPos,
+    versionPopoverId,
+    versionMenuPos,
+    rowHoverId,
+    pinnedQIds,
+    shortlistedQIds,
+    isFaculty,
+    isAdmin,
+    draggedQId,
+    br,
+    bdr,
+    fg,
+    mfg,
+    CURRENT_USER,
+    FACULTY_COURSES,
+    VERSION_HISTORY,
+    setSelected,
+    setRowMenuId,
+    setRowMenuPos,
+    setVersionPopoverId,
+    setVersionMenuPos,
+    setRowHoverId,
+    setPinnedQIds,
+    setShortlistedQIds,
+    setDraggedQId,
+    setDragQOverFolderId,
+    setRowPanel,
+    setEditImpactQ,
+    setRequestEditId,
+    setAddToFolderOpen,
+    setSelectedQForFolder,
+    setShareQId,
+    togglePin,
+    onEditQuestion,
+    onCollaborate: () => setCollaborateOpen(true),
+    facultyEditAccessQIds,
+    onTransferToCourse: (qId: string) => {
+      setTransferCourseOnly(true);
+      setSelectedQForFolder(qId);
+      setSelected(new Set([qId]));
+      setAddToFolderOpen(true);
+    },
+    personaTrustLevels,
+    setQuestions
+  };
+  const folderRowCtx: FolderRowCtx = {
+    liveFolderCounts,
+    folders,
+    expandedFolders,
+    selectedFolder,
+    renamingFolderId,
+    renamingFolderName,
+    folderMenuId,
+    dragFolderId,
+    dragOverFolderId,
+    draggedQId,
+    dragQOverFolderId,
+    inlineFolderParentId,
+    inlineFolderName,
+    facultyAccessibleFolderIds,
+    newContentFolderIds,
+    br,
+    bdr,
+    fg,
+    mfg,
+    inlineInputRef,
+    questions,
+    setQuestions,
+    assignments,
+    setFolders,
+    setExpandedFolders,
+    setSelectedFolder,
+    setFolderMenuId,
+    setRenamingFolderId,
+    setRenamingFolderName,
+    setDragFolderId,
+    setDragOverFolderId,
+    setDraggedQId,
+    setDragQOverFolderId,
+    setInlineFolderParentId,
+    setInlineFolderName,
+    setActiveTabId,
+    setAssignments,
+    setShareTarget,
+    setArchiveFolder,
+    setDeleteItem,
+    toggleFolderExpand,
+    handleFolderRename,
+    handleReorderFolders,
+    handleInlineFolderCreate,
+    cancelInlineFolder,
+    inlineFolderIsQSet,
+    setInlineFolderIsQSet
+  };
+  const renderHeader = () =>
+  <div
+    style={{
+      borderBottom: `1px solid ${bdr}`,
+      background: 'white',
+      flexShrink: 0
+    }}>
+    
+      <div
       style={{
         display: 'flex',
-        height: '100%',
-        overflow: 'hidden',
-        background: 'white',
-        position: 'relative',
-        flexDirection: 'column'
-      }}
-      onClick={() => {
-        setFolderMenuId(null);
-        setRowMenuId(null);
-        setVersionPopoverId(null);
-        setTabCtxMenu(null);
+        alignItems: 'center',
+        height: 44,
+        padding: '0 16px',
+        gap: 8
       }}>
       
-      {isFaculty && <FacultyAccessBanner courseNames={facultyCourseNames} />}
-      <div
+        <button
+        onClick={toggleLeft}
+        title={leftOpen ? 'Close library' : 'Open library'}
         style={{
+          background: 'none',
+          border: 'none',
+          cursor: 'pointer',
+          color: mfg,
+          padding: '4px 6px',
+          borderRadius: 4,
           display: 'flex',
-          flex: 1,
-          minHeight: 0,
-          overflow: 'hidden'
+          flexShrink: 0
+        }}
+        onMouseEnter={(e) => e.currentTarget.style.color = fg}
+        onMouseLeave={(e) => e.currentTarget.style.color = mfg}>
+        
+          <i
+          className="fa-light fa-sidebar"
+          style={{
+            fontSize: 15,
+            lineHeight: 1
+          }} />
+        
+        </button>
+        <span
+        style={{
+          width: 1,
+          height: 16,
+          background: bdr,
+          flexShrink: 0
+        }} />
+      
+        <span
+        style={{
+          fontSize: 13,
+          color: mfg,
+          fontWeight: 400
         }}>
         
-        {/* ── LEFT SIDEBAR ── */}
-        {leftOpen &&
-        <div
+          Question Bank
+        </span>
+        {selectedFolder &&
+      <>
+            <i
+          className="fa-regular fa-chevron-right"
           style={{
-            width: 256,
-            flexShrink: 0,
-            display: 'flex',
-            flexDirection: 'column',
-            borderRight: `1px solid ${bdr}`,
-            background: 'white',
-            overflow: 'hidden'
-          }}>
-          
-            <div
-            style={{
-              padding: '0 12px',
-              height: 40,
-              borderBottom: `1px solid ${bdr}`,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              flexShrink: 0
-            }}>
-            
-              <span
-              style={{
-                fontSize: 13,
-                fontWeight: 600,
-                color: fg,
-                fontFamily: fh,
-                letterSpacing: '-0.01em'
-              }}>
-              
-                Library
-              </span>
-              {isAdmin &&
-            <button
-              onClick={() => {
-                setInlineFolderParentId(null);
-                setInlineFolderName('');
-              }}
-              style={{
-                background: 'none',
-                border: 'none',
-                cursor: 'pointer',
-                color: mfg,
-                padding: 4,
-                borderRadius: 4,
-                display: 'flex',
-                alignItems: 'center',
-                gap: 4,
-                fontSize: 12
-              }}
-              onMouseEnter={(e) => e.currentTarget.style.color = fg}
-              onMouseLeave={(e) => e.currentTarget.style.color = mfg}
-              title="New folder">
-              
-                  <i
-                className="fa-regular fa-plus"
-                style={{
-                  fontSize: 12,
-                  lineHeight: 1
-                }} />
-              
-                </button>
-            }
-            </div>
-            <div
-            style={{
-              padding: '6px 8px',
-              borderBottom: `1px solid ${bdr}`,
-              flexShrink: 0
-            }}>
-            
-              {[
-            {
-              id: 'qa-all',
-              label: 'All Questions',
-              faIcon: 'book-open',
-              count: questions.length
-            }].
-            map((item) => {
-              const isA = activeTabId === item.id && !selectedFolder;
-              return (
-                <div
-                  key={item.id}
-                  onClick={() => {
-                    setSelectedFolder(null);
-                    setActiveTabId(item.id);
-                  }}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 8,
-                    padding: '7px 8px',
-                    borderRadius: 6,
-                    cursor: 'pointer',
-                    marginBottom: 1,
-                    background: isA ?
-                    `color-mix(in oklch,${br} 8%,white)` :
-                    'transparent'
-                  }}
-                  onMouseEnter={(e) => {
-                    if (!isA)
-                    e.currentTarget.style.background = 'var(--accent)';
-                  }}
-                  onMouseLeave={(e) => {
-                    if (!isA) e.currentTarget.style.background = 'transparent';
-                  }}>
-                  
-                    <i
-                    className={`${isA ? 'fa-solid' : 'fa-regular'} fa-${item.faIcon}`}
-                    style={{
-                      fontSize: 13,
-                      color: isA ? br : mfg,
-                      lineHeight: 1
-                    }} />
-                  
-                    <span
-                    style={{
-                      flex: 1,
-                      fontSize: 12,
-                      fontWeight: isA ? 600 : 400,
-                      color: isA ? br : fg
-                    }}>
-                    
-                      {item.label}
-                    </span>
-                    <span
-                    style={{
-                      fontSize: 11,
-                      color: mfg
-                    }}>
-                    
-                      {item.count}
-                    </span>
-                  </div>);
-
-            })}
-            </div>
-            <div
-            style={{
-              flex: 1,
-              overflowY: 'auto',
-              padding: '6px 8px'
-            }}>
-            
-              {isFaculty && rootCourseFolders.length > 0 &&
-            <>
-                  <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  padding: '6px 8px 5px'
-                }}>
-                
-                    <span
-                  style={{
-                    fontSize: 10,
-                    fontWeight: 700,
-                    textTransform: 'uppercase',
-                    letterSpacing: '0.07em',
-                    color: '#7c3aed',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 5,
-                    padding: '2px 7px',
-                    background: '#f5f3ff',
-                    borderRadius: 6
-                  }}>
-                  
-                      <i
-                    className="fa-regular fa-graduation-cap"
-                    style={{
-                      fontSize: 10
-                    }} />
-                  
-                      My Courses
-                    </span>
-                  </div>
-                  {rootCourseFolders.map((f) =>
-              <FacultyFolderRow key={f.id} f={f} />
-              )}
-                  <div
-                style={{
-                  borderTop: `1px solid ${bdr}`,
-                  margin: '8px 0'
-                }} />
-              
-                </>
-            }
-              <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                padding: '6px 8px 5px'
-              }}>
-              
-                <span
-                style={{
-                  fontSize: 10,
-                  fontWeight: 700,
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.07em',
-                  color: mfg,
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 5,
-                  padding: '2px 7px',
-                  background: 'var(--surface)',
-                  borderRadius: 6
-                }}>
-                
-                  <i
-                  className="fa-regular fa-folder-open"
-                  style={{
-                    fontSize: 10
-                  }} />
-                
-                  {isAdmin ? 'Courses & Folders' : 'Question Banks'}
-                </span>
-                {isAdmin &&
-              <button
-                onClick={() => {
-                  setInlineFolderParentId(null);
-                  setInlineFolderName('');
-                }}
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  cursor: 'pointer',
-                  color: mfg,
-                  padding: 2,
-                  borderRadius: 4,
-                  display: 'flex'
-                }}
-                onMouseEnter={(e) => e.currentTarget.style.color = fg}
-                onMouseLeave={(e) => e.currentTarget.style.color = mfg}
-                title="New top-level folder">
-                
-                    <i
-                  className="fa-regular fa-plus"
-                  style={{
-                    fontSize: 12,
-                    lineHeight: 1
-                  }} />
-                
-                  </button>
-              }
-              </div>
-              {isAdmin ?
-            <>
-                  {rootQBFolders.map((f) =>
-              <AdminFolderRow key={f.id} f={f} />
-              )}
-                  {rootCourseFolders.length > 0 &&
-              <>
-                      <div
-                  style={{
-                    borderTop: `1px solid ${bdr}`,
-                    margin: '6px 0'
-                  }} />
-                
-                      <div
-                  style={{
-                    padding: '2px 8px 6px'
-                  }}>
-                  
-                        <span
-                    style={{
-                      fontSize: 10,
-                      fontWeight: 700,
-                      textTransform: 'uppercase',
-                      letterSpacing: '0.07em',
-                      color: '#7c3aed',
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: 5,
-                      padding: '2px 7px',
-                      background: '#f5f3ff',
-                      borderRadius: 6
-                    }}>
-                    
-                          <i
-                      className="fa-regular fa-graduation-cap"
-                      style={{
-                        fontSize: 10
-                      }} />
-                    
-                          Active Courses
-                        </span>
-                      </div>
-                      {rootCourseFolders.map((f) =>
-                <AdminFolderRow key={f.id} f={f} />
-                )}
-                    </>
-              }
-                  <InlineFolderInput
-                parentId={null}
-                depth={0}
-                activePid={inlineFolderParentId}
-                name={inlineFolderName}
-                onSetName={setInlineFolderName}
-                onConfirm={handleInlineFolderCreate}
-                onCancel={cancelInlineFolder}
-                inputRef={inlineInputRef}
-                br={br}
-                fg={fg}
-                mfg={mfg} />
-              
-                  <button
-                onClick={() => {
-                  setInlineFolderParentId(null);
-                  setInlineFolderName('');
-                }}
-                style={{
-                  width: '100%',
-                  padding: '5px 8px 5px 30px',
-                  background: 'none',
-                  border: 'none',
-                  cursor: 'pointer',
-                  color: mfg,
-                  fontSize: 12,
-                  textAlign: 'left',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 5,
-                  marginTop: 2
-                }}
-                onMouseEnter={(e) => e.currentTarget.style.color = fg}
-                onMouseLeave={(e) => e.currentTarget.style.color = mfg}>
-                
-                    <i
-                  className="fa-regular fa-plus"
-                  style={{
-                    fontSize: 11,
-                    lineHeight: 1
-                  }} />
-                {' '}
-                    New Folder
-                  </button>
-                </> :
-
-            rootQBFolders.
-            filter((f) => facultyAccessibleFolderIds.has(f.id)).
-            map((f) => <FacultyFolderRow key={f.id} f={f} />)
-            }
-              {isAdmin && folders.some((f) => f.locked) &&
-            <>
-                  <div
-                style={{
-                  borderTop: `1px solid ${bdr}`,
-                  margin: '8px 0'
-                }} />
-              
-                  <div
-                style={{
-                  padding: '2px 8px 6px'
-                }}>
-                
-                    <span
-                  style={{
-                    fontSize: 10,
-                    fontWeight: 700,
-                    textTransform: 'uppercase',
-                    letterSpacing: '0.07em',
-                    color: mfg,
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: 5,
-                    padding: '2px 7px',
-                    background: 'var(--surface)',
-                    borderRadius: 6
-                  }}>
-                  
-                      <i
-                    className="fa-regular fa-box-archive"
-                    style={{
-                      fontSize: 10
-                    }} />
-                  
-                      Audit Snapshots
-                    </span>
-                  </div>
-                  {folders.
-              filter((f) => f.locked && !f.parentId).
-              map((f) =>
-              <AdminFolderRow key={f.id} f={f} />
-              )}
-                </>
-            }
-            </div>
-          </div>
-        }
-
-        {/* ── MAIN CONTENT ── */}
-        <div
+            fontSize: 10,
+            color: mfg,
+            flexShrink: 0
+          }} />
+        
+            <span
           style={{
-            flex: 1,
-            display: 'flex',
-            flexDirection: 'column',
-            minWidth: 0,
+            fontSize: 13,
+            color: fg,
+            fontWeight: 500,
             overflow: 'hidden',
-            background: 'white'
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+            maxWidth: 200
           }}>
           
-          {/* ── TOOLBAR ── */}
-          <div
+              {folders.find((f) => f.id === selectedFolder)?.name}
+            </span>
+          </>
+      }
+        <div
+        style={{
+          flex: 1
+        }} />
+      
+        <div
+        style={{
+          position: 'relative'
+        }}>
+        
+          <button
+          onClick={(e) => {
+            e.stopPropagation();
+            setPersonaMenuOpen((o) => !o);
+          }}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 6,
+            padding: '4px 8px 4px 4px',
+            borderRadius: 8,
+            border: `1px solid ${personaMenuOpen ? bdr : 'transparent'}`,
+            background: personaMenuOpen ? 'var(--accent)' : 'transparent',
+            cursor: 'pointer'
+          }}
+          onMouseEnter={(e) =>
+          e.currentTarget.style.background = 'var(--accent)'
+          }
+          onMouseLeave={(e) =>
+          e.currentTarget.style.background = personaMenuOpen ?
+          'var(--accent)' :
+          'transparent'
+          }>
+          
+            <div
             style={{
-              padding: '0 16px',
-              height: 48,
-              borderBottom: `1px solid ${bdr}`,
+              width: 26,
+              height: 26,
+              borderRadius: '50%',
+              background: activePersona.color,
               display: 'flex',
               alignItems: 'center',
-              gap: 0,
-              background: 'white',
+              justifyContent: 'center',
               flexShrink: 0
             }}>
             
-            <button
-              onClick={toggleLeft}
-              title={leftOpen ? 'Close library' : 'Open library'}
+              <span
               style={{
-                background: 'none',
-                border: 'none',
-                cursor: 'pointer',
-                color: mfg,
-                padding: '4px 6px',
-                borderRadius: 4,
-                display: 'flex',
-                flexShrink: 0
-              }}
-              onMouseEnter={(e) => e.currentTarget.style.color = fg}
-              onMouseLeave={(e) => e.currentTarget.style.color = mfg}>
-              
-              <i
-                className="fa-light fa-sidebar"
-                style={{
-                  fontSize: 15,
-                  lineHeight: 1
-                }} />
-              
-            </button>
-            <span
-              style={{
-                width: 1,
-                height: 20,
-                background: bdr,
-                margin: '0 12px',
-                flexShrink: 0
-              }} />
-            
-            <span
-              style={{
-                fontSize: 24,
+                fontSize: 9,
                 fontWeight: 700,
-                color: fg,
-                fontFamily: fh,
-                letterSpacing: '-0.02em',
-                lineHeight: 1
+                color: 'white',
+                letterSpacing: '0.02em'
               }}>
               
-              {selectedFolder ?
-              folders.find((f) => f.id === selectedFolder)?.name ||
-              'Question Bank' :
-              'Question Bank'}
+                {activePersona.initials}
+              </span>
+            </div>
+            <span
+            style={{
+              fontSize: 12,
+              fontWeight: 500,
+              color: fg
+            }}>
+            
+              {activePersona.name}
             </span>
-            {selectedFolder &&
-            folders.find((f) => f.id === selectedFolder)?.locked &&
             <span
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 4,
-                padding: '1px 7px',
-                borderRadius: 20,
-                fontSize: 11,
-                fontWeight: 600,
-                background: '#fef3c7',
-                color: '#92400e',
-                border: '1px solid #fde68a',
-                marginLeft: 8,
-                flexShrink: 0
-              }}>
-              
-                  <i
-                className="fa-solid fa-lock"
-                style={{
-                  fontSize: 9
-                }} />
-              {' '}
-                  Locked
-                </span>
-            }
-            {selectedFolder &&
-            folders.find((f) => f.id === selectedFolder)?.isCourse &&
-            <span
-              style={{
-                marginLeft: 8,
-                flexShrink: 0
-              }}>
-              
-                  <CourseBadge />
-                </span>
-            }
-            <div
-              style={{
-                flex: 1
-              }} />
-            
-            {isAdmin &&
-            <>
-                <button
-                onClick={() => setImportOpen(true)}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 5,
-                  padding: '5px 10px',
-                  borderRadius: 6,
-                  border: `1px solid ${bdr}`,
-                  background: 'transparent',
-                  color: fg,
-                  cursor: 'pointer',
-                  fontSize: 12,
-                  flexShrink: 0
-                }}
-                onMouseEnter={(e) =>
-                e.currentTarget.style.background = 'var(--accent)'
-                }
-                onMouseLeave={(e) =>
-                e.currentTarget.style.background = 'transparent'
-                }>
-                
-                  <i
-                  className="fa-regular fa-arrow-up-from-bracket"
-                  style={{
-                    fontSize: 12,
-                    lineHeight: 1
-                  }} />
-                {' '}
-                  Import
-                </button>
-                <div
-                style={{
-                  width: 6
-                }} />
-              
-              </>
-            }
-            <button
-              onClick={() => setNewQuestionOpen(true)}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 5,
-                padding: '5px 12px',
-                borderRadius: 6,
-                background: br,
-                color: 'var(--brand-foreground)',
-                border: 'none',
-                cursor: 'pointer',
-                fontSize: 12,
-                fontWeight: 600,
-                flexShrink: 0
-              }}>
-              
-              <i
-                className="fa-regular fa-plus"
-                style={{
-                  fontSize: 13,
-                  lineHeight: 1
-                }} />
-              {' '}
-              Question
-            </button>
-          </div>
-
-          {/* ── TAB BAR ── */}
-          <div
             style={{
-              display: 'flex',
-              alignItems: 'center',
-              borderBottom: `1px solid ${bdr}`,
-              background: 'white',
-              flexShrink: 0,
-              padding: '5px 8px 0',
-              gap: 2,
-              overflowX: 'auto'
-            }}>
-            
-            {tabItems.map((tab) => {
-              const isActive = activeTabId === tab.id,
-                isHov = hoverTabId === tab.id,
-                isMy = tab.id === 'qa-my';
-              const isRenaming = renamingTabId === tab.id;
-              return (
-                <div
-                  key={tab.id}
-                  onClick={(e) => {
-                    if (isRenaming) {
-                      e.stopPropagation();
-                      return;
-                    }
-                    setActiveTabId(tab.id);
-                  }}
-                  onContextMenu={(e) => {
-                    e.preventDefault();
-                    if (!tab.isSystem && (isAdmin || tab.personal))
-                    setTabCtxMenu({
-                      id: tab.id,
-                      x: e.clientX,
-                      y: e.clientY
-                    });
-                  }}
-                  onMouseEnter={() => setHoverTabId(tab.id)}
-                  onMouseLeave={() => setHoverTabId(null)}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 5,
-                    padding: '4px 9px',
-                    height: 28,
-                    borderRadius: 7,
-                    cursor: 'pointer',
-                    userSelect: 'none',
-                    marginBottom: 5,
-                    flexShrink: 0,
-                    background: isActive ? fg : 'transparent',
-                    color: isActive ? 'white' : isHov ? fg : mfg,
-                    position: 'relative',
-                    transition: 'background 0.12s'
-                  }}>
-                  
-                  {isMy &&
-                  <i
-                    className={`${isActive ? 'fa-solid' : 'fa-regular'} fa-user`}
-                    style={{
-                      fontSize: 11,
-                      lineHeight: 1
-                    }} />
-
-                  }
-                  {!isMy && !tab.isSystem && !tab.personal &&
-                  <i
-                    className={`${isActive ? 'fa-solid' : 'fa-regular'} fa-eye`}
-                    style={{
-                      fontSize: 10,
-                      lineHeight: 1
-                    }} />
-
-                  }
-                  {!isMy && !tab.isSystem && tab.personal &&
-                  <i
-                    className="fa-solid fa-lock"
-                    style={{
-                      fontSize: 9,
-                      lineHeight: 1,
-                      color: isActive ? br : '#1d4ed8',
-                      opacity: 0.7
-                    }} />
-
-                  }
-                  {isRenaming ?
-                  <input
-                    autoFocus
-                    value={renamingTabName}
-                    onChange={(e) => setRenamingTabName(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        saveTabRename();
-                      }
-                      if (e.key === 'Escape') setRenamingTabId(null);
-                    }}
-                    onBlur={saveTabRename}
-                    onClick={(e) => e.stopPropagation()}
-                    style={{
-                      fontSize: 12,
-                      fontWeight: 600,
-                      border: 'none',
-                      outline: `2px solid ${br}`,
-                      borderRadius: 3,
-                      background: 'white',
-                      color: br,
-                      padding: '0 4px',
-                      minWidth: 60,
-                      width: `${Math.max(60, (renamingTabName.length + 1) * 7.5)}px`
-                    }} /> :
-
-
-                  <span
-                    style={{
-                      fontSize: 12,
-                      fontWeight: isActive ? 600 : 400
-                    }}>
-                    
-                      {tab.name}
-                    </span>
-                  }
-                  <span
-                    style={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      minWidth: 16,
-                      height: 16,
-                      padding: '0 4px',
-                      borderRadius: 8,
-                      background: isActive ?
-                      'rgba(255,255,255,0.18)' :
-                      'var(--muted)',
-                      color: isActive ? 'white' : mfg,
-                      fontSize: 9,
-                      fontWeight: 600
-                    }}>
-                    
-                    {tab.count}
-                  </span>
-                  {!tab.isSystem && (
-                  isActive || isHov) &&
-                  !isRenaming && (
-                  isAdmin || tab.personal) &&
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setTabCtxMenu({
-                        id: tab.id,
-                        x: e.currentTarget.getBoundingClientRect().left,
-                        y:
-                        e.currentTarget.getBoundingClientRect().bottom +
-                        2
-                      });
-                    }}
-                    style={{
-                      background: 'none',
-                      border: 'none',
-                      cursor: 'pointer',
-                      color: mfg,
-                      padding: '2px 3px',
-                      borderRadius: 3,
-                      display: 'flex',
-                      marginLeft: 1
-                    }}
-                    onMouseEnter={(e) => e.currentTarget.style.color = br}
-                    onMouseLeave={(e) =>
-                    e.currentTarget.style.color = mfg
-                    }>
-                    
-                        <i
-                      className="fa-regular fa-chevron-down"
-                      style={{
-                        fontSize: 9,
-                        lineHeight: 1
-                      }} />
-                    
-                      </button>
-                  }
-                </div>);
-
-            })}
-            <button
-              title={isFaculty ? 'New personal view' : 'New Smart View'}
-              onClick={() => setCreateSVOpen(true)}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                padding: '4px 9px',
-                height: 28,
-                background: 'none',
-                border: 'none',
-                cursor: 'pointer',
-                color: mfg,
-                flexShrink: 0,
-                fontSize: 12,
-                gap: 4,
-                marginBottom: 5,
-                borderRadius: 7
-              }}
-              onMouseEnter={(e) => {
-                ;(e.currentTarget as HTMLButtonElement).style.color = br;
-              }}
-              onMouseLeave={(e) => {
-                ;(e.currentTarget as HTMLButtonElement).style.color = mfg;
-              }}>
-              
-              <i
-                className="fa-regular fa-plus"
-                style={{
-                  fontSize: 12,
-                  lineHeight: 1
-                }} />
-              
-              {isFaculty &&
-              <span
-                style={{
-                  fontSize: 11
-                }}>
-                
-                  Personal view
-                </span>
-              }
-            </button>
-          </div>
-
-          {/* ── FILTER BAR ── */}
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              padding: '0 12px',
-              height: 36,
-              borderBottom: `1px solid ${bdr}`,
-              background: 'white',
-              flexShrink: 0,
-              gap: 4
-            }}>
-            
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 4,
-                flex: 1,
-                minWidth: 0,
-                overflowX: 'auto'
-              }}>
-              
-              {Object.entries(fieldFilters).flatMap(([field, vals]) =>
-              (vals || []).map((val) =>
-              <span
-                key={`${field}-${val}`}
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: 4,
-                  padding: '2px 7px 2px 6px',
-                  borderRadius: 20,
-                  border: `1px solid ${bdr}`,
-                  background: 'white',
-                  fontSize: 12,
-                  color: fg,
-                  fontWeight: 500,
-                  flexShrink: 0,
-                  whiteSpace: 'nowrap'
-                }}>
-                
-                    <i
-                  className={`fa-regular fa-${fieldIcon(field)}`}
-                  style={{
-                    fontSize: 10,
-                    color: mfg
-                  }} />
-                
-                    {val}
-                    <button
-                  onClick={() => removeFilter(field, val)}
-                  style={{
-                    background: 'none',
-                    border: 'none',
-                    cursor: 'pointer',
-                    padding: 0,
-                    display: 'flex',
-                    alignItems: 'center',
-                    color: mfg,
-                    marginLeft: 1
-                  }}
-                  onMouseEnter={(e) => e.currentTarget.style.color = fg}
-                  onMouseLeave={(e) => e.currentTarget.style.color = mfg}>
-                  
-                      <i
-                    className="fa-regular fa-xmark"
-                    style={{
-                      fontSize: 10,
-                      lineHeight: 1
-                    }} />
-                  
-                    </button>
-                  </span>
-              )
-              )}
-              <button
-                onClick={() => setFilterSheetOpen(true)}
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: 4,
-                  padding: '2px 8px',
-                  borderRadius: 20,
-                  border: `1px dashed ${bdr}`,
-                  background: 'transparent',
-                  fontSize: 12,
-                  color: mfg,
-                  cursor: 'pointer',
-                  flexShrink: 0,
-                  whiteSpace: 'nowrap'
-                }}
-                onMouseEnter={(e) => {
-                  ;(e.currentTarget as HTMLButtonElement).style.color = fg;
-                  (e.currentTarget as HTMLButtonElement).style.borderColor = fg;
-                }}
-                onMouseLeave={(e) => {
-                  ;(e.currentTarget as HTMLButtonElement).style.color = mfg;
-                  (e.currentTarget as HTMLButtonElement).style.borderColor =
-                  bdr;
-                }}>
-                
-                <i
-                  className="fa-regular fa-plus"
-                  style={{
-                    fontSize: 10,
-                    lineHeight: 1
-                  }} />
-                
-                Add filter
-              </button>
-              {Object.keys(fieldFilters).length > 0 &&
-              <button
-                onClick={() => setFieldFilters({})}
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  cursor: 'pointer',
-                  fontSize: 12,
-                  color: mfg,
-                  padding: '2px 4px',
-                  flexShrink: 0
-                }}
-                onMouseEnter={(e) => e.currentTarget.style.color = fg}
-                onMouseLeave={(e) => e.currentTarget.style.color = mfg}>
-                
-                  Clear all
-                </button>
-              }
-            </div>
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 1,
-                flexShrink: 0
-              }}>
-              
-              {searchOpen ?
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 5,
-                  padding: '3px 8px',
-                  borderRadius: 6,
-                  border: `1px solid ${br}`,
-                  background: 'white',
-                  marginRight: 2
-                }}>
-                
-                  <i
-                  className="fa-regular fa-magnifying-glass"
-                  style={{
-                    fontSize: 11,
-                    color: mfg,
-                    flexShrink: 0
-                  }} />
-                
-                  <input
-                  autoFocus
-                  value={searchText}
-                  onChange={(e) => setSearchText(e.target.value)}
-                  onBlur={() => {
-                    if (!searchText) setSearchOpen(false);
-                  }}
-                  placeholder="Search…"
-                  style={{
-                    background: 'transparent',
-                    border: 'none',
-                    outline: 'none',
-                    color: fg,
-                    fontSize: 12,
-                    width: 140,
-                    minWidth: 0
-                  }} />
-                
-                  {searchText &&
-                <button
-                  onClick={() => {
-                    setSearchText('');
-                    setSearchOpen(false);
-                  }}
-                  style={{
-                    background: 'none',
-                    border: 'none',
-                    cursor: 'pointer',
-                    padding: 0,
-                    display: 'flex',
-                    alignItems: 'center',
-                    color: mfg
-                  }}>
-                  
-                      <i
-                    className="fa-regular fa-xmark"
-                    style={{
-                      fontSize: 10
-                    }} />
-                  
-                    </button>
-                }
-                </div> :
-
-              <button
-                onClick={() => setSearchOpen(true)}
-                title="Search"
-                style={{
-                  background: searchText ?
-                  `color-mix(in oklch,${br} 8%,white)` :
-                  'none',
-                  border: 'none',
-                  cursor: 'pointer',
-                  padding: 5,
-                  borderRadius: 6,
-                  display: 'flex',
-                  color: searchText ? br : mfg
-                }}
-                onMouseEnter={(e) =>
-                e.currentTarget.style.background = 'var(--accent)'
-                }
-                onMouseLeave={(e) =>
-                e.currentTarget.style.background = searchText ?
-                `color-mix(in oklch,${br} 8%,white)` :
-                'none'
-                }>
-                
-                  <i
-                  className="fa-regular fa-magnifying-glass"
-                  style={{
-                    fontSize: 13,
-                    lineHeight: 1
-                  }} />
-                
-                </button>
-              }
-              <div
-                style={{
-                  position: 'relative'
-                }}>
-                
-                <button
-                  onClick={() => setFilterSheetOpen(true)}
-                  style={{
-                    background: Object.keys(fieldFilters).length ?
-                    `color-mix(in oklch,${br} 8%,white)` :
-                    'none',
-                    border: 'none',
-                    cursor: 'pointer',
-                    padding: 5,
-                    borderRadius: 6,
-                    display: 'flex',
-                    alignItems: 'center',
-                    color: Object.keys(fieldFilters).length ? br : mfg
-                  }}
-                  onMouseEnter={(e) =>
-                  e.currentTarget.style.background = 'var(--accent)'
-                  }
-                  onMouseLeave={(e) =>
-                  e.currentTarget.style.background = Object.keys(
-                    fieldFilters
-                  ).length ?
-                  `color-mix(in oklch,${br} 8%,white)` :
-                  'none'
-                  }>
-                  
-                  <i
-                    className="fa-regular fa-filter"
-                    style={{
-                      fontSize: 13,
-                      lineHeight: 1
-                    }} />
-                  
-                </button>
-                {Object.keys(fieldFilters).length > 0 &&
-                <span
-                  style={{
-                    position: 'absolute',
-                    top: -3,
-                    right: -3,
-                    minWidth: 14,
-                    height: 14,
-                    padding: '0 3px',
-                    borderRadius: 7,
-                    background: br,
-                    color: 'white',
-                    fontSize: 8,
-                    fontWeight: 700,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    lineHeight: 1,
-                    pointerEvents: 'none'
-                  }}>
-                  
-                    {Object.keys(fieldFilters).length}
-                  </span>
-                }
-              </div>
-              <button
-                onClick={() => setFilterSheetOpen(true)}
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  cursor: 'pointer',
-                  padding: 5,
-                  borderRadius: 6,
-                  display: 'flex',
-                  color: mfg
-                }}
-                onMouseEnter={(e) =>
-                e.currentTarget.style.background = 'var(--accent)'
-                }
-                onMouseLeave={(e) =>
-                e.currentTarget.style.background = 'none'
-                }>
-                
-                <i
-                  className="fa-regular fa-sliders"
-                  style={{
-                    fontSize: 13,
-                    lineHeight: 1
-                  }} />
-                
-              </button>
-            </div>
-          </div>
-
-          {/* ── SEMESTER / YEAR FILTER ── */}
-          {selectedFolderIsLifetimeRepo && availableSemesters.length > 0 &&
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 6,
-              padding: '6px 16px',
-              borderBottom: `1px solid ${bdr}`,
+              fontSize: 9,
+              color: mfg,
+              padding: '1px 5px',
+              borderRadius: 4,
               background: 'var(--surface)',
-              flexShrink: 0,
-              overflowX: 'auto'
+              fontWeight: 600
             }}>
             
-              <i
-              className="fa-regular fa-calendar-days"
-              style={{
-                fontSize: 11,
-                color: mfg,
-                flexShrink: 0
-              }} />
+              {activePersona.role === 'dept-head' ? 'Admin' : 'Faculty'}
+            </span>
+            <i
+            className="fa-regular fa-chevron-down"
+            style={{
+              fontSize: 9,
+              color: mfg
+            }} />
+          
+          </button>
+          {personaMenuOpen &&
+        <>
+              <div
+            style={{
+              position: 'fixed',
+              inset: 0,
+              zIndex: 9997
+            }}
+            onClick={() => setPersonaMenuOpen(false)} />
+          
+              <div
+            style={{
+              position: 'absolute',
+              right: 0,
+              top: 'calc(100% + 4px)',
+              zIndex: 9999,
+              background: 'var(--card)',
+              border: `1px solid ${bdr}`,
+              borderRadius: 10,
+              boxShadow: '0 4px 20px rgba(0,0,0,0.13)',
+              minWidth: 240,
+              overflow: 'hidden',
+              paddingBottom: 4
+            }}>
             
-              <span
+                <div
               style={{
+                padding: '10px 12px 8px',
                 fontSize: 10,
                 fontWeight: 700,
                 color: mfg,
                 textTransform: 'uppercase',
                 letterSpacing: '0.07em',
-                flexShrink: 0,
-                marginRight: 2
-              }}>
-              
-                Year
-              </span>
-              {(['All', ...availableSemesters] as string[]).map((yr) => {
-              const isA =
-              yr === 'All' ?
-              folderYearFilter === null :
-              folderYearFilter === yr;
-              return (
-                <button
-                  key={yr}
-                  onClick={() =>
-                  setFolderYearFilter(yr === 'All' ? null : yr)
-                  }
-                  style={{
-                    padding: '3px 10px',
-                    borderRadius: 20,
-                    border: `1px solid ${isA ? br : bdr}`,
-                    background: isA ?
-                    `color-mix(in oklch,${br} 10%,white)` :
-                    'transparent',
-                    color: isA ? br : mfg,
-                    fontSize: 11,
-                    fontWeight: isA ? 600 : 400,
-                    cursor: 'pointer',
-                    flexShrink: 0,
-                    transition: 'all 0.1s'
-                  }}>
-                  
-                    {yr}
-                  </button>);
-
-            })}
-              {folderYearFilter &&
-            <span
-              style={{
-                fontSize: 10,
-                color: mfg,
-                marginLeft: 2
-              }}>
-              
-                  — {filteredQuestions.length} question
-                  {filteredQuestions.length !== 1 ? 's' : ''}
-                </span>
-            }
-            </div>
-          }
-
-          {/* ── TABLE ── */}
-          <div
-            style={{
-              flex: 1,
-              overflowY: 'auto'
-            }}>
-            
-            <div
-              style={{
-                display: 'grid',
-                gridTemplateColumns:
-                '28px 52px 1fr 92px 90px 76px 144px 60px 76px',
-                gap: 8,
-                padding: '0 16px',
-                height: 34,
                 borderBottom: `1px solid ${bdr}`,
-                background: 'var(--surface)',
-                position: 'sticky',
-                top: 0,
-                zIndex: 1,
-                alignItems: 'center'
+                marginBottom: 4
               }}>
               
-              <input
-                type="checkbox"
-                style={{
-                  accentColor: br,
-                  cursor: 'pointer',
-                  margin: 'auto'
-                }}
-                checked={
-                selected.size > 0 &&
-                selected.size === filteredQuestions.length
-                }
-                onChange={() => {
-                  if (selected.size === filteredQuestions.length)
-                  setSelected(new Set());else
-                  setSelected(new Set(filteredQuestions.map((q) => q.id)));
-                }} />
-              
-              <span />
-              {[
-              {
-                h: 'Question',
-                tip: null
-              },
-              {
-                h: 'Type',
-                tip: null
-              },
-              {
-                h: 'Status',
-                tip: null
-              },
-              {
-                h: 'Difficulty',
-                tip: null
-              },
-              {
-                h: 'Creator',
-                tip: 'Original question author. Last editor shown below name if different.'
-              },
-              {
-                h: 'P-Bis',
-                tip: 'Point Biserial Correlation — measures question discrimination'
-              },
-              {
-                h: '',
-                tip: null
-              }].
-              map(({ h, tip }, i) =>
-              <span
-                key={i}
-                style={{
-                  fontSize: 10,
-                  fontWeight: 700,
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.07em',
-                  color: mfg,
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 3
-                }}>
-                
-                  {h}
-                  {tip &&
-                <span
-                  title={tip}
-                  style={{
-                    cursor: 'help',
-                    opacity: 0.5
-                  }}>
-                  
-                      <i
-                    className="fa-regular fa-circle-info"
-                    style={{
-                      fontSize: 9
-                    }} />
-                  
-                    </span>
-                }
-                </span>
-              )}
-            </div>
-
-            {filteredQuestions.length === 0 ?
-            <div
-              style={{
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                justifyContent: 'center',
-                height: 240,
-                gap: 8,
-                color: mfg
-              }}>
-              
-                <i
-                className="fa-regular fa-magnifying-glass"
-                style={{
-                  fontSize: 28,
-                  opacity: 0.3,
-                  lineHeight: 1
-                }} />
-              
-                <span
-                style={{
-                  fontSize: 13
-                }}>
-                
-                  No questions match the current filters
-                </span>
-              </div> :
-
-            filteredQuestions.map((q) => {
-              const isSel = selected.has(q.id),
-                isRowMenuOpen = rowMenuId === q.id,
-                isVersionOpen = versionPopoverId === q.id;
-              const isRowHov = rowHoverId === q.id,
-                isPinned = pinnedQIds.has(q.id);
-              const vHistory = VERSION_HISTORY[q.id] || [
-              {
-                v: q.version || 1,
-                label: 'Current version',
-                date: q.age || 'Recently',
-                author: q.creator || q.collaborator || 'Faculty'
-              }];
-
-              const isMyQuestion =
-              q.collaborator === CURRENT_USER || q.creator === CURRENT_USER;
-              const facultyRowMenu = isMyQuestion ?
-              [
-              {
-                icon: 'pen',
-                label: 'Edit Question',
-                action: () => {
-                  onEditQuestion?.();
-                  setRowMenuId(null);
-                }
-              },
-              {
-                icon: 'thumbtack',
-                label: isPinned ? 'Unfix' : 'Fix to top',
-                action: () => {
-                  togglePin(q.id);
-                  setRowMenuId(null);
-                },
-                amber: !isPinned
-              },
-              null,
-              {
-                icon: 'flag',
-                label: 'Flag for Review',
-                action: () => setRowMenuId(null)
-              },
-              {
-                icon: 'clock-rotate-left',
-                label: 'Version History',
-                action: () => {
-                  setVersionPopoverId(q.id);
-                  setRowMenuId(null);
-                }
-              },
-              null,
-              {
-                icon: 'copy',
-                label: 'Save as Copy',
-                action: () => setRowMenuId(null)
-              }] :
-
-              [
-              {
-                icon: 'eye',
-                label: 'View Details',
-                action: () => {
-                  setRowPanel(q);
-                  setRowMenuId(null);
-                }
-              },
-              {
-                icon: 'clock-rotate-left',
-                label: 'Version History',
-                action: () => {
-                  setVersionPopoverId(q.id);
-                  setRowMenuId(null);
-                }
-              },
-              null,
-              {
-                icon: 'copy',
-                label: 'Save as Copy',
-                action: () => setRowMenuId(null)
-              },
-              {
-                icon: 'flag',
-                label: 'Flag for Review',
-                action: () => setRowMenuId(null)
-              }];
-
-              const adminRowMenu = [
-              {
-                icon: 'eye',
-                label: 'View Details',
-                action: () => {
-                  setRowPanel(q);
-                  setRowMenuId(null);
-                }
-              },
-              {
-                icon: 'thumbtack',
-                label: isPinned ? 'Unfix' : 'Fix to top',
-                action: () => {
-                  togglePin(q.id);
-                  setRowMenuId(null);
-                },
-                amber: !isPinned
-              },
-              null,
-              {
-                icon: 'folder-plus',
-                label: 'Add to Folder',
-                action: () => {
-                  setSelectedQForFolder(q.id);
-                  setSelected(new Set([q.id]));
-                  setAddToFolderOpen(true);
-                  setRowMenuId(null);
-                }
-              },
-              {
-                icon: 'share-nodes',
-                label: 'Share',
-                action: () => {
-                  setShareQId(q.id);
-                  setRowMenuId(null);
-                }
-              },
-              {
-                icon: 'flag',
-                label: 'Flag for Review',
-                action: () => setRowMenuId(null)
-              },
-              {
-                icon: 'circle-check',
-                label: 'Mark Reviewed',
-                action: () => setRowMenuId(null)
-              },
-              {
-                icon: 'clock-rotate-left',
-                label: 'Version History',
-                action: () => {
-                  setVersionPopoverId(q.id);
-                  setRowMenuId(null);
-                }
-              },
-              null,
-              {
-                icon: 'box-archive',
-                label: 'Archive',
-                action: () => setRowMenuId(null)
-              },
-              {
-                icon: 'trash-can',
-                label: 'Delete',
-                action: () => setRowMenuId(null),
-                danger: true
-              }];
-
-              const rowMenuItems = isFaculty ? facultyRowMenu : adminRowMenu;
-              return (
-                <div
-                  key={q.id}
-                  draggable={isAdmin}
-                  onDragStart={
-                  isAdmin ?
-                  (e) => {
-                    setDraggedQId(q.id);
-                    e.dataTransfer.effectAllowed = 'copy';
-                  } :
-                  undefined
-                  }
-                  onDragEnd={
-                  isAdmin ?
-                  () => {
-                    setDraggedQId(null);
-                    setDragQOverFolderId(null);
-                  } :
-                  undefined
-                  }
-                  onClick={() => {
-                    setRowMenuId(null);
-                    setVersionPopoverId(null);
-                    setRowPanel(q);
-                  }}
-                  onMouseEnter={(e) => {
-                    if (!isSel)
-                    e.currentTarget.style.background = 'var(--surface)';
-                    setRowHoverId(q.id);
-                  }}
-                  onMouseLeave={(e) => {
-                    if (!isSel) e.currentTarget.style.background = 'white';
-                    setRowHoverId(null);
-                  }}
-                  style={{
-                    display: 'grid',
-                    gridTemplateColumns:
-                    '28px 52px 1fr 92px 90px 76px 144px 60px 76px',
-                    gap: 8,
-                    padding: '10px 16px',
-                    borderBottom: `1px solid ${bdr}`,
-                    cursor: 'pointer',
-                    alignItems: 'center',
-                    background: isSel ?
-                    `color-mix(in oklch,${br} 4%,white)` :
-                    isPinned ?
-                    `color-mix(in oklch,${br} 2%,white)` :
-                    'white',
-                    opacity:
-                    isFaculty && !isMyQuestion ?
-                    0.72 :
-                    draggedQId === q.id ?
-                    0.4 :
-                    1,
-                    borderLeft: isPinned ?
-                    `3px solid ${br}` :
-                    isFaculty && isMyQuestion ?
-                    `3px solid ${br}` :
-                    '3px solid transparent',
-                    transition: 'background .1s'
-                  }}>
-                  
-                    <input
-                    type="checkbox"
-                    style={{
-                      accentColor: br,
-                      cursor: 'pointer',
-                      margin: 'auto'
-                    }}
-                    checked={isSel}
-                    onClick={(e) => e.stopPropagation()}
-                    onChange={() =>
-                    setSelected((prev) => {
-                      const n = new Set(prev);
-                      n.has(q.id) ? n.delete(q.id) : n.add(q.id);
-                      return n;
-                    })
-                    } />
-                  
-                    <div
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 3,
-                      minWidth: 0
-                    }}>
-                    
-                      {isPinned &&
-                    <i
-                      className="fa-solid fa-thumbtack"
-                      title="Click to unfix"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        togglePin(q.id);
-                      }}
-                      style={{
-                        fontSize: 8,
-                        color: br,
-                        lineHeight: 1,
-                        transform: 'rotate(45deg)',
-                        flexShrink: 0,
-                        cursor: 'pointer',
-                        opacity: 0.85
-                      }} />
-
-                    }
-                      <span
-                      style={{
-                        fontSize: 10,
-                        color: mfg,
-                        fontFamily: 'var(--font-mono)',
-                        letterSpacing: '0.02em',
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                        whiteSpace: 'nowrap'
-                      }}>
-                      
-                        {q.code}
-                      </span>
-                    </div>
-                    <div
-                    style={{
-                      minWidth: 0
-                    }}>
-                    
-                      <div
-                      style={{
-                        fontSize: 13,
-                        fontWeight: 500,
-                        color: fg,
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                        whiteSpace: 'nowrap'
-                      }}>
-                      
-                        {q.title}
-                      </div>
-                      {q.tags && q.tags.length > 0 &&
-                    <div
-                      style={{
-                        display: 'flex',
-                        gap: 4,
-                        marginTop: 3,
-                        flexWrap: 'nowrap',
-                        overflow: 'hidden'
-                      }}>
-                      
-                          {q.tags.slice(0, 3).map((tag) =>
-                      <span
-                        key={tag}
-                        style={{
-                          fontSize: 10,
-                          padding: '1px 6px',
-                          borderRadius: 10,
-                          background: 'var(--muted)',
-                          color: mfg,
-                          whiteSpace: 'nowrap'
-                        }}>
-                        
-                              {tag}
-                            </span>
-                      )}
-                          {q.tags.length > 3 &&
-                      <span
-                        style={{
-                          fontSize: 10,
-                          color: mfg
-                        }}>
-                        
-                              +{q.tags.length - 3}
-                            </span>
-                      }
-                        </div>
-                    }
-                      {isFaculty && isRowHov &&
-                    <div
-                      style={{
-                        marginTop: 3
-                      }}>
-                      
-                          {isMyQuestion ?
-                      <span
-                        style={{
-                          fontSize: 10,
-                          color: br,
-                          fontWeight: 700,
-                          padding: '1px 6px',
-                          background: `color-mix(in oklch,${br} 8%,white)`,
-                          borderRadius: 6
-                        }}>
-                        
-                              Mine
-                            </span> :
-
-                      <span
-                        style={{
-                          fontSize: 10,
-                          color: '#64748b',
-                          fontWeight: 600,
-                          padding: '1px 6px',
-                          background: '#f1f5f9',
-                          borderRadius: 6
-                        }}>
-                        
-                              View only
-                            </span>
-                      }
-                        </div>
-                    }
-                    </div>
-                    <div>
-                      <TypeBadge t={q.type} />
-                    </div>
-                    <div>
-                      <StatusBadge s={q.status} />
-                    </div>
-                    <div>
-                      <DiffBadge d={q.difficulty} />
-                    </div>
-                    <div
-                    style={{
-                      minWidth: 0
-                    }}>
-                    
-                      <CreatorCell
-                      creator={q.creator}
-                      collaborator={q.collaborator} />
-                    
-                    </div>
-                    <div
-                    style={{
-                      display: 'flex',
-                      justifyContent: 'flex-end'
-                    }}>
-                    
-                      <PBisCell val={q.pbis ?? null} dir={q.pbisDir ?? null} />
-                    </div>
-                    <div
-                    style={{
-                      position: 'relative',
-                      display: 'flex',
-                      justifyContent: 'flex-end',
-                      alignItems: 'center',
-                      gap: 2
-                    }}
-                    onClick={(e) => e.stopPropagation()}>
-                    
-                      <div
-                      style={{
-                        position: 'relative'
-                      }}>
-                      
-                        <button
-                        title="Version history"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setVersionPopoverId(isVersionOpen ? null : q.id);
-                          setRowMenuId(null);
-                        }}
-                        style={{
-                          background: isVersionOpen ?
-                          `color-mix(in oklch,${br} 12%,white)` :
-                          'var(--muted)',
-                          border: 'none',
-                          cursor: 'pointer',
-                          padding: '2px 5px',
-                          borderRadius: 4,
-                          fontSize: 10,
-                          color: isVersionOpen ? br : mfg,
-                          fontWeight: 600,
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: 2
-                        }}
-                        onMouseEnter={(e) => {
-                          e.currentTarget.style.background = `color-mix(in oklch,${br} 8%,white)`;
-                          e.currentTarget.style.color = br;
-                        }}
-                        onMouseLeave={(e) => {
-                          if (!isVersionOpen) {
-                            e.currentTarget.style.background = 'var(--muted)';
-                            e.currentTarget.style.color = mfg;
-                          }
-                        }}>
-                        
-                          <i
-                          className={`${isVersionOpen ? 'fa-solid' : 'fa-regular'} fa-clock-rotate-left`}
-                          style={{
-                            fontSize: 10,
-                            lineHeight: 1
-                          }} />
-                        {' '}
-                          V{q.version || 1}
-                        </button>
-                        {isVersionOpen &&
-                      <div
-                        onMouseDown={(e) => e.stopPropagation()}
-                        style={{
-                          position: 'absolute',
-                          right: 0,
-                          top: '100%',
-                          marginTop: 4,
-                          background: 'var(--card)',
-                          border: `1px solid ${bdr}`,
-                          borderRadius: 8,
-                          boxShadow: '0 4px 20px rgba(0,0,0,0.13)',
-                          minWidth: 240,
-                          zIndex: 100,
-                          padding: 10
-                        }}>
-                        
-                            <div
-                          style={{
-                            fontSize: 10,
-                            fontWeight: 700,
-                            color: mfg,
-                            textTransform: 'uppercase',
-                            letterSpacing: '0.07em',
-                            marginBottom: 8
-                          }}>
-                          
-                              Version History
-                            </div>
-                            {vHistory.map((v, idx) =>
-                        <div
-                          key={v.v}
-                          style={{
-                            display: 'flex',
-                            gap: 8,
-                            padding: '6px 0',
-                            borderBottom:
-                            idx < vHistory.length - 1 ?
-                            `1px solid ${bdr}` :
-                            'none'
-                          }}>
-                          
-                                <span
-                            style={{
-                              fontSize: 11,
-                              fontWeight: 700,
-                              color: idx === 0 ? br : mfg,
-                              minWidth: 24
-                            }}>
-                            
-                                  V{v.v}
-                                </span>
-                                <div
-                            style={{
-                              flex: 1,
-                              minWidth: 0
-                            }}>
-                            
-                                  <div
-                              style={{
-                                fontSize: 12,
-                                color: fg
-                              }}>
-                              
-                                    {v.label}
-                                  </div>
-                                  <div
-                              style={{
-                                fontSize: 11,
-                                color: mfg
-                              }}>
-                              
-                                    {v.author} · {v.date}
-                                  </div>
-                                </div>
-                                {idx === 0 &&
-                          <span
-                            style={{
-                              fontSize: 10,
-                              color: br,
-                              fontWeight: 600,
-                              alignSelf: 'center',
-                              flexShrink: 0
-                            }}>
-                            
-                                    Current
-                                  </span>
-                          }
-                              </div>
-                        )}
-                            {isFaculty && !isMyQuestion &&
-                        <div
-                          style={{
-                            marginTop: 8,
-                            padding: '6px 8px',
-                            borderRadius: 6,
-                            background: '#f8fafc',
-                            fontSize: 11,
-                            color: '#64748b',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: 6
-                          }}>
-                          
-                                <i
-                            className="fa-regular fa-lock"
-                            style={{
-                              fontSize: 10
-                            }} />
-                          
-                                Only the creator can restore versions.
-                              </div>
-                        }
-                          </div>
-                      }
-                      </div>
-                      <div
-                      style={{
-                        position: 'relative'
-                      }}>
-                      
-                        <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setRowMenuId(isRowMenuOpen ? null : q.id);
-                          setVersionPopoverId(null);
-                        }}
-                        style={{
-                          background: 'none',
-                          border: 'none',
-                          cursor: 'pointer',
-                          color: mfg,
-                          padding: 4,
-                          borderRadius: 4,
-                          display: 'flex'
-                        }}
-                        onMouseEnter={(e) => {
-                          e.currentTarget.style.color = fg;
-                          e.currentTarget.style.background = 'var(--accent)';
-                        }}
-                        onMouseLeave={(e) => {
-                          e.currentTarget.style.color = mfg;
-                          e.currentTarget.style.background = 'none';
-                        }}>
-                        
-                          <i
-                          className={`${isRowMenuOpen ? 'fa-solid' : 'fa-regular'} fa-ellipsis`}
-                          style={{
-                            fontSize: 14,
-                            lineHeight: 1
-                          }} />
-                        
-                        </button>
-                        {isRowMenuOpen &&
-                      <div
-                        onMouseDown={(e) => e.stopPropagation()}
-                        style={{
-                          position: 'absolute',
-                          right: 0,
-                          top: '100%',
-                          marginTop: 2,
-                          background: 'var(--card)',
-                          border: `1px solid ${bdr}`,
-                          borderRadius: 8,
-                          boxShadow: '0 4px 20px rgba(0,0,0,0.13)',
-                          minWidth: 190,
-                          zIndex: 100,
-                          overflow: 'hidden',
-                          paddingTop: 4,
-                          paddingBottom: 4
-                        }}>
-                        
-                            {isFaculty &&
-                        <div
-                          style={{
-                            padding: '5px 12px',
-                            fontSize: 10,
-                            color: mfg,
-                            borderBottom: `1px solid ${bdr}`,
-                            marginBottom: 2,
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: 5
-                          }}>
-                          
-                                <i
-                            className={`fa-regular ${isMyQuestion ? 'fa-user' : 'fa-user-lock'}`}
-                            style={{
-                              fontSize: 10
-                            }} />
-                          
-                                <span>
-                                  {isMyQuestion ?
-                            'Your question' :
-                            'View only — ' + q.creator}
-                                </span>
-                              </div>
-                        }
-                            {rowMenuItems.map((item, i) => {
-                          if (!item)
-                          return (
-                            <div
-                              key={i}
-                              style={{
-                                borderTop: `1px solid ${bdr}`,
-                                margin: '4px 0'
-                              }} />);
-
-
-                          const it = item as {
-                            icon: string;
-                            label: string;
-                            action: () => void;
-                            danger?: boolean;
-                            amber?: boolean;
-                          };
-                          const col = it.danger ?
-                            '#ef4444' :
-                            it.amber ?
-                            br :
-                            fg,
-                            icol = it.danger ?
-                            '#ef4444' :
-                            it.amber ?
-                            br :
-                            mfg;
-                          return (
-                            <button
-                              key={i}
-                              onClick={it.action}
-                              style={{
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: 8,
-                                padding: '7px 12px',
-                                width: '100%',
-                                background: 'none',
-                                border: 'none',
-                                cursor: 'pointer',
-                                color: col,
-                                fontSize: 12,
-                                textAlign: 'left'
-                              }}
-                              onMouseEnter={(e) =>
-                              e.currentTarget.style.background =
-                              'var(--accent)'
-                              }
-                              onMouseLeave={(e) =>
-                              e.currentTarget.style.background = 'none'
-                              }>
-                              
-                                  <i
-                                className={`${it.icon === 'thumbtack' && isPinned ? 'fa-solid' : 'fa-regular'} fa-${it.icon}`}
-                                style={{
-                                  fontSize: 12,
-                                  color: icol,
-                                  lineHeight: 1,
-                                  transform:
-                                  it.icon === 'thumbtack' ?
-                                  'rotate(45deg)' :
-                                  'none'
-                                }} />
-                              
-                                  {it.label}
-                                </button>);
-
-                        })}
-                          </div>
-                      }
-                      </div>
-                    </div>
-                  </div>);
-
-            })
-            }
-          </div>
-        </div>
-      </div>
-      {/* ── BULK ACTION BAR ── */}
-      {selected.size > 0 &&
-      <div
-        style={{
-          position: 'absolute',
-          bottom: 44,
-          left: '50%',
-          transform: 'translateX(-50%)',
-          background: 'var(--foreground)',
-          color: 'white',
-          borderRadius: 10,
-          padding: '8px 12px',
-          display: 'flex',
-          alignItems: 'center',
-          gap: 2,
-          boxShadow: '0 4px 24px rgba(0,0,0,0.22)',
-          zIndex: 50,
-          userSelect: 'none'
-        }}>
-        
-          <span
-          style={{
-            fontWeight: 600,
-            fontSize: 12,
-            marginRight: 8,
-            color: 'rgba(255,255,255,0.65)'
-          }}>
-          
-            {selected.size} selected
-          </span>
-          {(isFaculty ?
-        [
-        allSelectedPinned ?
-        {
-          icon: 'thumbtack',
-          label: 'Unfix',
-          action: () => {
-            selected.forEach((id) =>
-            setPinnedQIds((prev) => {
-              const n = new Set(prev);
-              n.delete(id);
-              return n;
-            })
-            );
-          }
-        } :
-        {
-          icon: 'thumbtack',
-          label: 'Fix',
-          action: () => {
-            selected.forEach((id) =>
-            setPinnedQIds((prev) => {
-              const n = new Set(prev);
-              n.add(id);
-              return n;
-            })
-            );
-          }
-        },
-        {
-          icon: 'flag',
-          label: 'Flag',
-          action: () => {}
-        },
-        {
-          icon: 'copy',
-          label: 'Save as Copy',
-          action: () => {}
-        }] :
-
-        [
-        allSelectedPinned ?
-        {
-          icon: 'thumbtack',
-          label: 'Unfix',
-          action: () => {
-            selected.forEach((id) =>
-            setPinnedQIds((prev) => {
-              const n = new Set(prev);
-              n.delete(id);
-              return n;
-            })
-            );
-          }
-        } :
-        {
-          icon: 'thumbtack',
-          label: 'Fix',
-          action: () => {
-            selected.forEach((id) =>
-            setPinnedQIds((prev) => {
-              const n = new Set(prev);
-              n.add(id);
-              return n;
-            })
-            );
-          }
-        },
-        {
-          icon: 'folder-plus',
-          label: 'Add to Folder',
-          action: () => setAddToFolderOpen(true)
-        },
-        {
-          icon: 'flag',
-          label: 'Flag',
-          action: () => {}
-        },
-        {
-          icon: 'circle-check',
-          label: 'Reviewed',
-          action: () => {}
-        },
-        {
-          icon: 'box-archive',
-          label: 'Archive',
-          action: () => {}
-        },
-        {
-          icon: 'trash-can',
-          label: 'Delete',
-          action: () => {},
-          danger: true
-        }] as
-        {
-          icon: string;
-          label: string;
-          action: () => void;
-          danger?: boolean;
-        }[]).
-        map((item, i) =>
-        <button
-          key={i}
-          onClick={item.action}
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 5,
-            padding: '5px 10px',
-            borderRadius: 6,
-            background: 'transparent',
-            border: 'none',
-            cursor: 'pointer',
-            color: (item as any).danger ? '#fca5a5' : 'white',
-            fontSize: 12
-          }}
-          onMouseEnter={(e) =>
-          e.currentTarget.style.background = 'rgba(255,255,255,0.15)'
-          }
-          onMouseLeave={(e) =>
-          e.currentTarget.style.background = 'transparent'
-          }>
-          
-              <i
-            className={`fa-regular fa-${item.icon}`}
-            style={{
-              fontSize: 13,
-              lineHeight: 1,
-              transform:
-              item.icon === 'thumbtack' ? 'rotate(45deg)' : 'none'
-            }} />
-          
-              {item.label}
-            </button>
-        )}
-          <button
-          onClick={() => setSelected(new Set())}
-          style={{
-            background: 'none',
-            border: 'none',
-            cursor: 'pointer',
-            color: 'rgba(255,255,255,0.55)',
-            padding: 4,
-            borderRadius: 4,
-            display: 'flex',
-            marginLeft: 4
-          }}>
-          
-            <i
-            className="fa-regular fa-xmark"
-            style={{
-              fontSize: 14,
-              lineHeight: 1
-            }} />
-          
-          </button>
-        </div>
-      }
-      {/* ── TAB CONTEXT MENU ── */}
-      {tabCtxMenu &&
-      <>
-          <div
-          style={{
-            position: 'fixed',
-            inset: 0,
-            zIndex: 900
-          }}
-          onClick={() => setTabCtxMenu(null)} />
-        
-          <div
-          onMouseDown={(e) => e.stopPropagation()}
-          style={{
-            position: 'fixed',
-            left: tabCtxMenu.x,
-            top: tabCtxMenu.y,
-            zIndex: 901,
-            background: 'var(--card)',
-            border: `1px solid ${bdr}`,
-            borderRadius: 8,
-            boxShadow: '0 4px 20px rgba(0,0,0,0.13)',
-            minWidth: 196,
-            overflow: 'hidden',
-            paddingTop: 4,
-            paddingBottom: 4
-          }}>
-          
-            {(() => {
-            const sv = views.find((v) => v.id === tabCtxMenu.id);
-            const idx = views.findIndex((v) => v.id === tabCtxMenu.id);
-            const canLeft = idx > 0,
-              canRight = idx < views.length - 1;
-            const menuItems: (
-            {
-              icon: string;
-              label: string;
-              action: () => void;
-              danger?: boolean;
-            } |
-            'divider')[] =
-            [
-            {
-              icon: 'pen',
-              label: 'Rename',
-              action: () => {
-                setRenamingTabId(tabCtxMenu.id);
-                setRenamingTabName(sv?.name || '');
-                setTabCtxMenu(null);
-              }
-            },
-            {
-              icon: 'sliders',
-              label: 'Edit criteria',
-              action: () => {
-                if (sv) setEditSV(sv);
-                setTabCtxMenu(null);
-              }
-            },
-            'divider',
-            ...(canLeft ?
-            [
-            {
-              icon: 'arrow-left',
-              label: 'Move left',
-              action: () => moveTab(tabCtxMenu.id, -1)
-            } as const] :
-
-            []),
-            ...(canRight ?
-            [
-            {
-              icon: 'arrow-right',
-              label: 'Move right',
-              action: () => moveTab(tabCtxMenu.id, +1)
-            } as const] :
-
-            []),
-            ...(canLeft || canRight ? ['divider' as const] : []),
-            {
-              icon: 'copy',
-              label: 'Duplicate',
-              action: () => {
-                if (sv) {
-                  const ns: SVItem = {
-                    ...sv,
-                    id: `sv-dup-${Date.now()}`,
-                    name: `${sv.name} (copy)`,
-                    personal: isFaculty
-                  };
-                  setViews((p) => {
-                    const i = p.findIndex((v) => v.id === sv.id);
-                    const r = [...p];
-                    r.splice(i + 1, 0, ns);
-                    return r;
-                  });
-                }
-                setTabCtxMenu(null);
-              }
-            },
-            'divider',
-            {
-              icon: 'trash-can',
-              label: 'Delete view',
-              action: () => {
-                handleDeleteTab(tabCtxMenu.id);
-                setTabCtxMenu(null);
-              },
-              danger: true
-            }];
-
-            return menuItems.map((item, i) => {
-              if (item === 'divider')
-              return (
-                <div
-                  key={i}
-                  style={{
-                    borderTop: `1px solid ${bdr}`,
-                    margin: '4px 0'
-                  }} />);
-
-
-              const it = item as {
-                icon: string;
-                label: string;
-                action: () => void;
-                danger?: boolean;
-              };
-              const col = it.danger ? '#ef4444' : fg,
-                icol = it.danger ? '#ef4444' : mfg;
+                  Switch persona
+                </div>
+                {PERSONAS.map((p) => {
+              const isActive = p.id === activePersonaId;
+              const isWells = p.id === 'dr-wells';
+              const tl = p.trustLevel;
+              const tlColor =
+              tl === 'senior' ?
+              '#059669' :
+              tl === 'mid' ?
+              '#2563eb' :
+              '#94a3b8';
+              const tlBg =
+              tl === 'senior' ?
+              '#dcfce7' :
+              tl === 'mid' ?
+              '#dbeafe' :
+              '#f1f5f9';
               return (
                 <button
-                  key={i}
-                  onClick={it.action}
+                  key={p.id}
+                  onClick={() => {
+                    setActivePersonaId(p.id);
+                    setPersonaMenuOpen(false);
+                  }}
                   style={{
                     display: 'flex',
                     alignItems: 'center',
-                    gap: 8,
-                    padding: '7px 14px',
+                    gap: 10,
+                    padding: '8px 12px',
                     width: '100%',
-                    background: 'none',
+                    background: isActive ?
+                    `color-mix(in oklch,${br} 6%,white)` :
+                    'none',
                     border: 'none',
                     cursor: 'pointer',
-                    color: col,
-                    fontSize: 12,
                     textAlign: 'left'
                   }}
                   onMouseEnter={(e) =>
                   e.currentTarget.style.background = 'var(--accent)'
                   }
                   onMouseLeave={(e) =>
-                  e.currentTarget.style.background = 'none'
+                  e.currentTarget.style.background = isActive ?
+                  `color-mix(in oklch,${br} 6%,white)` :
+                  'none'
                   }>
                   
-                    <i
-                    className={`fa-regular fa-${it.icon}`}
+                      <div
                     style={{
-                      fontSize: 12,
-                      color: icol,
-                      lineHeight: 1
+                      width: 28,
+                      height: 28,
+                      borderRadius: '50%',
+                      background: p.color,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      flexShrink: 0
+                    }}>
+                    
+                        <span
+                      style={{
+                        fontSize: 9,
+                        fontWeight: 700,
+                        color: 'white'
+                      }}>
+                      
+                          {p.initials}
+                        </span>
+                      </div>
+                      <div
+                    style={{
+                      flex: 1,
+                      minWidth: 0
+                    }}>
+                    
+                        <div
+                      style={{
+                        fontSize: 13,
+                        fontWeight: isActive ? 600 : 400,
+                        color: fg,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 6
+                      }}>
+                      
+                          {p.name}
+                          <span
+                        style={{
+                          fontSize: 9,
+                          fontWeight: 700,
+                          padding: '1px 5px',
+                          borderRadius: 3,
+                          background: tlBg,
+                          color: tlColor
+                        }}>
+                        
+                            {tl.toUpperCase()}
+                          </span>
+                        </div>
+                        <div
+                      style={{
+                        fontSize: 10,
+                        color: mfg
+                      }}>
+                      
+                          {p.role === 'dept-head' ?
+                      'Department Admin' :
+                      'Faculty'}
+                          {isWells && !facultyAssignments['Dr. Wells']?.length ?
+                      ' · No access yet' :
+                      ''}
+                        </div>
+                      </div>
+                      {isActive &&
+                  <i
+                    className="fa-solid fa-check"
+                    style={{
+                      fontSize: 10,
+                      color: br,
+                      flexShrink: 0
                     }} />
+
+                  }
+                    </button>);
+
+            })}
+                {/* Trust level legend */}
+                <div
+              style={{
+                padding: '8px 12px 4px',
+                borderTop: `1px solid ${bdr}`,
+                marginTop: 4,
+                fontSize: 10,
+                color: mfg,
+                fontWeight: 700,
+                textTransform: 'uppercase',
+                letterSpacing: '0.07em'
+              }}>
+              
+                  Trust Levels
+                </div>
+                <div
+              style={{
+                display: 'flex',
+                gap: 6,
+                padding: '6px 12px 12px'
+              }}>
+              
+                  {[
+              {
+                l: 'Senior',
+                c: '#059669',
+                bg: '#dcfce7',
+                d: 'Peer-reviewed'
+              },
+              {
+                l: 'Mid',
+                c: '#2563eb',
+                bg: '#dbeafe',
+                d: 'Active contributor'
+              },
+              {
+                l: 'Junior',
+                c: '#94a3b8',
+                bg: '#f1f5f9',
+                d: 'New contributor'
+              }].
+              map(({ l, c, bg, d }) =>
+              <div
+                key={l}
+                style={{
+                  flex: 1,
+                  textAlign: 'center',
+                  padding: '5px 3px',
+                  borderRadius: 6,
+                  background: bg
+                }}>
+                
+                      <div
+                  style={{
+                    fontSize: 9,
+                    fontWeight: 700,
+                    color: c,
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.04em'
+                  }}>
                   
-                    {it.label}
-                  </button>);
-
-            });
-          })()}
-          </div>
-        </>
-      }
-      {/* ── RIGHT DETAIL PANEL ── */}
-      {rowPanel &&
-      <QuestionRowPanel
-        q={toQRowData(rowPanel)}
-        onClose={() => setRowPanel(null)}
-        onEdit={() => {
-          if (
-          !isFaculty ||
-          rowPanel.creator === CURRENT_USER ||
-          rowPanel.collaborator === CURRENT_USER)
-          {
-            onEditQuestion?.();
-          }
-          setRowPanel(null);
-        }} />
-
-      }
-      {/* ── MODALS ── */}
-      {newQuestionOpen &&
-      <NewQuestionModal
-        onClose={() => setNewQuestionOpen(false)}
-        onSave={() => setNewQuestionOpen(false)} />
-
-      }
-      {importOpen && isAdmin &&
-      <ImportWizardModal
-        isOpen={importOpen}
-        onClose={() => setImportOpen(false)}
-        folders={folders}
-        folderRules={{}}
-        onImport={(_qs, _assigns) => setImportOpen(false)} />
-
-      }
-      <CreateSmartViewModal
-        isOpen={createSVOpen}
-        onClose={() => setCreateSVOpen(false)}
-        onCreate={handleCreateSV}
-        availableTags={allValues.tags} />
-      
-      {editSV &&
-      <EditSmartViewModal
-        isOpen
-        onClose={() => setEditSV(null)}
-        initialName={editSV.name}
-        initialCriteria={editSV.criteria}
-        availableTags={allValues.tags}
-        onSave={(name, criteria) => {
-          setViews((prev) =>
-          prev.map((v) =>
-          v.id === editSV.id ?
-          {
-            ...v,
-            name,
-            criteria,
-            autoUpdate: criteria.autoUpdate
-          } :
-          v
-          )
-          );
-          setEditSV(null);
-        }} />
-
-      }
-      {archiveFolder && isAdmin &&
-      <ArchiveConfirmModal
-        isOpen
-        onClose={() => setArchiveFolder(null)}
-        onConfirm={() => {
-          setFolders((prev) => prev.filter((f) => f.id !== archiveFolder));
-          setArchiveFolder(null);
-        }}
-        folderName={folders.find((f) => f.id === archiveFolder)?.name || ''} />
-
-      }
-      {deleteItem && isAdmin &&
-      <DeleteConfirmModal
-        isOpen
-        onClose={() => setDeleteItem(null)}
-        onConfirm={() => {
-          if (deleteItem.type === 'folder')
-          setFolders((prev) => prev.filter((f) => f.id !== deleteItem.id));else
-          {
-            setViews((prev) => prev.filter((v) => v.id !== deleteItem.id));
-            if (activeTabId === deleteItem.id) setActiveTabId('qa-all');
-          }
-          setDeleteItem(null);
-        }}
-        itemName={deleteItem.name}
-        itemType={deleteItem.type} />
-
-      }
-      {shareTarget &&
-      <ShareFolderModal
-        isOpen
-        onClose={() => setShareTarget(null)}
-        itemName={shareTarget.name}
-        itemType={shareTarget.type} />
-
-      }
-      {addToFolderOpen && isAdmin &&
-      <AddToFolderModal
-        isOpen
-        onClose={() => {
-          setAddToFolderOpen(false);
-          setSelectedQForFolder(null);
-        }}
-        allFolders={folders}
-        assignedFolderIds={assignedFolderIds}
-        questionCount={selected.size || 1}
-        onAdd={(fids) => {
-          setAssignments((prev) => {
-            const next = {
-              ...prev
-            };
-            fids.forEach((fid) => {
-              const qids = selectedQForFolder ?
-              [selectedQForFolder] :
-              [...selected];
-              next[fid] = [...new Set([...(next[fid] || []), ...qids])];
-            });
-            return next;
-          });
-          setAddToFolderOpen(false);
-          setSelected(new Set());
-          setSelectedQForFolder(null);
-        }} />
-
-      }
-      {shareQId &&
-      <ShareQuestionModal
-        isOpen
-        onClose={() => setShareQId(null)}
-        questionTitle={questions.find((q) => q.id === shareQId)?.title}
-        questionId={shareQId} />
-
-      }
-      <FilterSheet
-        isOpen={filterSheetOpen}
-        onClose={() => setFilterSheetOpen(false)}
-        filters={fieldFilters}
-        onFiltersChange={setFieldFilters}
-        allValues={allValues}
-        onSaveAsView={handleSaveAsView}
-        onCreateView={() => setCreateSVOpen(true)}
-        smartViews={views.map((v) => ({
-          id: v.id,
-          name: v.name,
-          count: v.count
-        }))}
-        onSelectView={(id) => {
-          setActiveTabId(id);
-          setFilterSheetOpen(false);
+                        {l}
+                      </div>
+                      <div
+                  style={{
+                    fontSize: 9,
+                    color: c,
+                    opacity: 0.75,
+                    marginTop: 1
+                  }}>
+                  
+                        {d}
+                      </div>
+                    </div>
+              )}
+                </div>
+              </div>
+            </>
+        }
+        </div>
+        <div
+        style={{
+          width: 8
         }} />
       
-    </div>);
+        <button
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 5,
+          padding: '5px 12px',
+          borderRadius: 20,
+          border: '1.5px solid #e879f9',
+          background: 'white',
+          color: '#a21caf',
+          cursor: 'pointer',
+          fontSize: 12,
+          fontWeight: 600,
+          flexShrink: 0
+        }}
+        onMouseEnter={(e) => {
+          ;(e.currentTarget as HTMLButtonElement).style.background = '#fdf4ff';
+        }}
+        onMouseLeave={(e) => {
+          ;(e.currentTarget as HTMLButtonElement).style.background = 'white';
+        }}>
+        
+          <i
+          className="fa-regular fa-sparkles"
+          style={{
+            fontSize: 11,
+            lineHeight: 1,
+            color: '#e879f9'
+          }} />
+        {' '}
+          Ask Leo
+        </button>
+      </div>
+    </div>;
 
+  const _ctx = {
+    liveFolderCounts,
+    liveViewCounts,
+    COURSE_CREATE_SENTINEL,
+    CURRENT_USER,
+    activeIsHidden,
+    activeTabId,
+    addToFolderOpen,
+    adminAssignOpen,
+    allSelectedPinned,
+    allValues,
+    archiveFolder,
+    assignedFolderIds,
+    autoCollectOpen,
+    availableSemesters,
+    br,
+    bdr,
+    mfg,
+    cancelInlineFolder,
+    setInlineFolderIsQSet,
+    chevronHoverId,
+    collaborateOpen,
+    createSVOpen,
+    crossDeptBlockQ,
+    deleteItem,
+    editImpactQ,
+    editSV,
+    facultyAccessMap,
+    facultyAccessibleFolderIds,
+    facultyAssignments,
+    facultyCourseNames,
+    facultyStatusFilterMap,
+    fg,
+    fieldFilters,
+    fieldIcon,
+    filterFieldOpen,
+    filterFields,
+    filterSheetOpen,
+    filteredQuestions,
+    folderRowCtx,
+    folderYearFilter,
+    folders,
+    handleAutoCollect,
+    handleCreateSV,
+    handleDeleteTab,
+    handleInlineFolderCreate,
+    handleSaveAsView,
+    headerMenuOpen,
+    headerMenuPos,
+    hiddenTabs,
+    hoverTabId,
+    importOpen,
+    inlineFolderName,
+    inlineFolderParentId,
+    inlineInputRef,
+    isAdmin,
+    isFaculty,
+    isSenior,
+    leftOpen,
+    moreOptionsOpen,
+    moreOptionsPos,
+    moveTab,
+    myQuestionsCount,
+    newQuestionOpen,
+    overflowOpen,
+    questionAccessMap,
+    removeFilter,
+    renamingTabId,
+    renamingTabName,
+    renderHeader,
+    requestEditId,
+    rootCourseFolders,
+    rootQBFolders,
+    rootQSetFolders,
+    rowCtx,
+    rowPanel,
+    saveTabRename,
+    searchOpen,
+    searchText,
+    sectionOverlapQ,
+    selected,
+    selectedFolder,
+    selectedFolderIsLifetimeRepo,
+    selectedQForFolder,
+    setActiveTabId,
+    setAddToFolderOpen,
+    setAdminAssignOpen,
+    setArchiveFolder,
+    setAssignments,
+    setAutoCollectOpen,
+    setChevronHoverId,
+    setCollaborateOpen,
+    setCreateSVOpen,
+    setCrossDeptBlockQ,
+    setDeleteItem,
+    setEditImpactQ,
+    setEditSV,
+    setExportOpen,
+    setFacultyAccessMap,
+    setFacultyAssignments,
+    setFacultyStatusFilterMap,
+    setFieldFilters,
+    setFilterFieldOpen,
+    setFilterSheetOpen,
+    setFolderMenuId,
+    setFolderYearFilter,
+    setFolders,
+    setHeaderMenuOpen,
+    setHeaderMenuPos,
+    setHoverTabId,
+    setImportOpen,
+    setInlineFolderName,
+    setInlineFolderParentId,
+    setMoreOptionsOpen,
+    setMoreOptionsPos,
+    setNewQuestionOpen,
+    setOverflowOpen,
+    setPersonaMenuOpen,
+    setPinnedQIds,
+    setQuestionAccessMap,
+    setQuestions,
+    setRenamingTabId,
+    setRenamingTabName,
+    setRequestEditId,
+    setRowMenuId,
+    setRowMenuPos,
+    setRowPanel,
+    setSearchOpen,
+    setSearchText,
+    setSectionOverlapQ,
+    setSelected,
+    setSelectedFolder,
+    setSelectedQForFolder,
+    setShareQId,
+    setShareTarget,
+    setShortlistedQIds,
+    setShowOnlyShortlisted,
+    setTabCtxMenu,
+    setTransferCourseOnly,
+    setVersionMenuPos,
+    setVersionPopoverId,
+    setViews,
+    shareQId,
+    shareTarget,
+    showOnboarding,
+    showOnlyShortlisted,
+    tabBarWrapRef,
+    tabCtxMenu,
+    toQRowData,
+    transferCourseOnly,
+    views,
+    visibleTabs,
+    questions,
+    PERSONAS,
+    personaTrustLevels
+  };
+  return <QBView {..._ctx} />;
 }

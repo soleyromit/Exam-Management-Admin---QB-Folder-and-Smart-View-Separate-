@@ -11,9 +11,16 @@ export interface SmartCriteria {
 }
 export const DEFAULT_CRITERIA: SmartCriteria = { difficulties: [], blooms: [], usage: 'any', pbis: 'any', types: [], tags: [], autoUpdate: true };
 
+export interface FacultyInfo {
+  id: string;
+  name: string;
+  initials: string;
+  color: string;
+}
+
 function Overlay({ onClose, children }: {onClose: () => void;children: React.ReactNode;}) {
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10000 }}
     onClick={(e) => {if (e.target === e.currentTarget) onClose();}}>
       {children}
     </div>);
@@ -120,13 +127,11 @@ function CriteriaForm({ name, setName, criteria, setCriteria, showName = true, a
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>{QTYPES.map((t) => <Chip key={t} label={t} active={criteria.types.includes(t)} onClick={() => setCriteria({ ...criteria, types: tog(criteria.types, t) })} />)}</div>
       </div>
 
-      {/* Tags — search + create */}
       <div style={row}>
         <label style={lbl}>
           Tags
           <span style={{ fontWeight: 400, color: 'var(--muted-foreground)', fontSize: 11, marginLeft: 4 }}>(match any)</span>
         </label>
-        {/* Search/create input */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, border: '1px solid var(--border)', borderRadius: 7, padding: '5px 10px', background: 'var(--input-background)', marginBottom: 8 }}>
           <i className="fa-regular fa-tag" style={{ fontSize: 12, color: 'var(--muted-foreground)', flexShrink: 0 }} />
           <input
@@ -144,7 +149,6 @@ function CriteriaForm({ name, setName, criteria, setCriteria, showName = true, a
             </button>
           }
         </div>
-        {/* Tag chips */}
         {filteredTags.length > 0 &&
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
             {filteredTags.map((t, i) =>
@@ -159,7 +163,6 @@ function CriteriaForm({ name, setName, criteria, setCriteria, showName = true, a
         {filteredTags.length === 0 && tagInput.trim() && !canCreate &&
         <div style={{ fontSize: 12, color: 'var(--muted-foreground)', padding: '4px 0' }}>Tag already selected</div>
         }
-        {/* Selected tags summary */}
         {(criteria.tags || []).length > 0 &&
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 8, padding: '6px 10px', background: 'color-mix(in oklch,var(--brand) 5%,white)', borderRadius: 6, border: '1px solid var(--brand-border)' }}>
             {(criteria.tags || []).map((t) =>
@@ -337,80 +340,379 @@ export function DeleteConfirmModal({ isOpen, onClose, onConfirm, itemName, itemT
 
 }
 
-export function ShareFolderModal({ isOpen, onClose, itemName, itemType
+// ── ShareFolderModal — with 3-tier access: folder level + status filter + question-level note
+export function ShareFolderModal({
+  isOpen, onClose,
+  folderId, folderName, folderType,
+  allFaculty,
+  facultyAssignments,
+  facultyAccessMap,
+  facultyStatusFilterMap,
+  onUpdateAccess
 
-}: {isOpen: boolean;onClose: () => void;itemName: string;itemType: 'folder' | 'view';}) {
-  const [email, setEmail] = useState('');
-  const [perm, setPerm] = useState<'view' | 'edit'>('view');
-  const [collab, setCollab] = useState(true);
-  const [users, setUsers] = useState([
-  { name: 'Dr. Sarah Chen', email: 's.chen@touro.edu', perm: 'edit' as const },
-  { name: 'Prof. Marcus Hill', email: 'm.hill@touro.edu', perm: 'view' as const }]
-  );
-  if (!isOpen) return null;
-  const add = () => {if (!email.trim()) return;setUsers((u) => [...u, { name: email, email, perm }]);setEmail('');};
-  const inp: React.CSSProperties = { padding: '8px 12px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--input-background)', color: 'var(--foreground)', fontSize: 13, outline: 'none' };
-  function ToggleSwitch({ on, onToggle }: {on: boolean;onToggle: () => void;}) {
-    return (
-      <button onClick={onToggle} style={{ width: 40, height: 22, borderRadius: 11, border: 'none', cursor: 'pointer', background: on ? 'var(--brand)' : 'var(--muted)', position: 'relative', flexShrink: 0, transition: 'background 0.2s' }}>
-        <span style={{ position: 'absolute', width: 16, height: 16, borderRadius: '50%', background: 'white', top: 3, left: on ? 21 : 3, transition: 'left 0.2s', boxShadow: '0 1px 3px rgba(0,0,0,0.3)' }} />
-      </button>);
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+}: {isOpen: boolean;onClose: () => void;folderId: string;folderName: string;folderType: 'folder' | 'view';allFaculty: FacultyInfo[];facultyAssignments: Record<string, string[]>;facultyAccessMap: Record<string, Record<string, 'view' | 'edit'>>;facultyStatusFilterMap?: Record<string, 'approved' | 'all'>;onUpdateAccess: (newAssignments: Record<string, string[]>, newAccessMap: Record<string, Record<string, 'view' | 'edit'>>, newStatusFilterMap: Record<string, 'approved' | 'all'>) => void;}) {
+  // local access level state
+  const buildLocal = () => {
+    const m: Record<string, 'view' | 'edit'> = {};
+    allFaculty.forEach((f) => {
+      if ((facultyAssignments[f.name] || []).includes(folderId)) {
+        m[f.name] = facultyAccessMap[f.name]?.[folderId] ?? 'view';
+      }
+    });
+    return m;
+  };
+  // local status filter state: 'approved' = only approved questions, 'all' = all questions
+  const buildStatusLocal = () => {
+    const m: Record<string, 'approved' | 'all'> = {};
+    allFaculty.forEach((f) => {
+      if ((facultyAssignments[f.name] || []).includes(folderId)) {
+        m[f.name] = facultyStatusFilterMap?.[f.name] ?? 'approved';
+      }
+    });
+    return m;
+  };
+
+  const [localAccess, setLocalAccess] = useState<Record<string, 'view' | 'edit'>>(buildLocal);
+  const [statusMap, setStatusMap] = useState<Record<string, 'approved' | 'all'>>(buildStatusLocal);
+  const [search, setSearch] = useState('');
+  const [saved, setSaved] = useState(false);
+  const [activeTab, setActiveTab] = useState<'folder' | 'questions'>('folder');
+
+  // Reset local state when modal opens
+  const [lastOpen, setLastOpen] = useState(false);
+  if (isOpen && !lastOpen) {
+    setLastOpen(true);
+    setLocalAccess(buildLocal());
+    setStatusMap(buildStatusLocal());
+    setSearch('');
+    setSaved(false);
+    setActiveTab('folder');
   }
+  if (!isOpen && lastOpen) setLastOpen(false);
+
+  if (!isOpen) return null;
+
+  const currentlyAccessed = allFaculty.filter((f) => localAccess[f.name] != null);
+  const searchLower = search.toLowerCase();
+  const suggestions = allFaculty.filter(
+    (f) => !localAccess[f.name] && (
+    f.name.toLowerCase().includes(searchLower) || f.id.includes(searchLower))
+  );
+
+  const grant = (name: string, level: 'view' | 'edit' = 'view') => {
+    setLocalAccess((prev) => ({ ...prev, [name]: level }));
+    setStatusMap((prev) => ({ ...prev, [name]: prev[name] ?? 'approved' }));
+    setSearch('');
+    setSaved(false);
+  };
+
+  const revoke = (name: string) => {
+    setLocalAccess((prev) => {const n = { ...prev };delete n[name];return n;});
+    setStatusMap((prev) => {const n = { ...prev };delete n[name];return n;});
+    setSaved(false);
+  };
+
+  const toggleLevel = (name: string) => {
+    setLocalAccess((prev) => ({ ...prev, [name]: prev[name] === 'edit' ? 'view' : 'edit' }));
+    setSaved(false);
+  };
+
+  const toggleStatus = (name: string) => {
+    setStatusMap((prev) => ({ ...prev, [name]: prev[name] === 'all' ? 'approved' : 'all' }));
+    setSaved(false);
+  };
+
+  const handleSave = () => {
+    const newAssignments: Record<string, string[]> = { ...facultyAssignments };
+    const newAccessMap: Record<string, Record<string, 'view' | 'edit'>> = {};
+    allFaculty.forEach((f) => {
+      newAccessMap[f.name] = { ...(facultyAccessMap[f.name] || {}) };
+    });
+    allFaculty.forEach((f) => {
+      const prev = (facultyAssignments[f.name] || []).includes(folderId);
+      const curr = localAccess[f.name] != null;
+      if (curr && !prev) {
+        newAssignments[f.name] = [...(newAssignments[f.name] || []), folderId];
+      } else if (!curr && prev) {
+        newAssignments[f.name] = (newAssignments[f.name] || []).filter((id: string) => id !== folderId);
+      }
+      if (curr) {
+        newAccessMap[f.name][folderId] = localAccess[f.name];
+      } else {
+        delete newAccessMap[f.name][folderId];
+      }
+    });
+    // Build combined status map (merge existing with local changes)
+    const newStatusMap: Record<string, 'approved' | 'all'> = { ...(facultyStatusFilterMap || {}) };
+    allFaculty.forEach((f) => {
+      if (localAccess[f.name] != null) {
+        newStatusMap[f.name] = statusMap[f.name] ?? 'approved';
+      }
+    });
+    onUpdateAccess(newAssignments, newAccessMap, newStatusMap);
+    setSaved(true);
+    setTimeout(onClose, 900);
+  };
+
+  const accessBadge = (level: 'view' | 'edit') => ({
+    bg: level === 'edit' ? '#ede9fe' : '#f0f9ff',
+    text: level === 'edit' ? '#6d28d9' : '#0369a1',
+    border: level === 'edit' ? '#c4b5fd' : '#bae6fd',
+    icon: level === 'edit' ? 'fa-pen' : 'fa-eye',
+    label: level === 'edit' ? 'Can edit' : 'View only'
+  });
+
+  const inp: React.CSSProperties = {
+    flex: 1, border: 'none', outline: 'none',
+    background: 'transparent', fontSize: 13,
+    color: 'var(--foreground)', minWidth: 0
+  };
+
+  const bdr = 'var(--border)';
+  const mfg = 'var(--muted-foreground)';
+
   return (
     <Overlay onClose={onClose}>
-      <ModalCard width={460}>
-        <ModalHeader title={`Share ${itemType === 'folder' ? 'Folder' : 'View'}: "${itemName}"`} onClose={onClose} />
-        <div style={{ padding: '16px 24px 24px' }}>
-          <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
-            <input value={email} onChange={(e) => setEmail(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && add()}
-            placeholder="Add by email or name..." style={{ ...inp, flex: 1 }} />
-            <select value={perm} onChange={(e) => setPerm(e.target.value as 'view' | 'edit')} style={{ ...inp }}>
-              <option value="view">Can view</option>
-              <option value="edit">Can edit</option>
-            </select>
-            <Btn label="Add" variant="primary" onClick={add} disabled={!email.trim()} />
-          </div>
-          {users.length > 0 &&
-          <div style={{ border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden', marginBottom: 16 }}>
-              {users.map((u, i) =>
-            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', borderBottom: i < users.length - 1 ? '1px solid var(--border)' : 'none' }}>
-                  <div style={{ width: 30, height: 30, borderRadius: '50%', background: 'var(--brand)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700, color: 'var(--brand-foreground)', flexShrink: 0 }}>
-                    {u.name.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()}
-                  </div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--foreground)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{u.name}</div>
-                    <div style={{ fontSize: 11, color: 'var(--muted-foreground)' }}>{u.email}</div>
-                  </div>
-                  <select value={u.perm} onChange={(e) => setUsers((us) => us.map((x, j) => j === i ? { ...x, perm: e.target.value as 'view' | 'edit' } : x))}
-              style={{ fontSize: 12, padding: '3px 8px', borderRadius: 5, border: '1px solid var(--border)', background: 'var(--input-background)', color: 'var(--foreground)', outline: 'none' }}>
-                    <option value="view">Can view</option>
-                    <option value="edit">Can edit</option>
-                  </select>
-                  <button onClick={() => setUsers((us) => us.filter((_, j) => j !== i))} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted-foreground)', padding: 2, display: 'flex', borderRadius: 4 }}>
-                    <i className="fa-regular fa-xmark" style={{ fontSize: 14, lineHeight: 1 }} />
-                  </button>
-                </div>
-            )}
-            </div>
-          }
-          {itemType === 'folder' &&
+      <ModalCard width={520}>
+        <ModalHeader
+          title={`Share ${folderType === 'folder' ? 'Folder' : 'View'}`}
+          onClose={onClose} />
+        
+
+        {/* Access tier tabs */}
+        <div style={{ display: 'flex', gap: 0, padding: '0 24px', borderBottom: `1px solid ${bdr}`, background: 'var(--surface)' }}>
+          {(['folder', 'questions'] as const).map((tab) => {
+            const labels = { folder: 'Folder Access', questions: 'Question Visibility' };
+            const icons = { folder: 'folder-open', questions: 'shield-halved' };
+            const isActive = activeTab === tab;
+            return (
+              <button key={tab}
+              onClick={() => setActiveTab(tab)}
+              style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '10px 14px', background: 'none', border: 'none', borderBottom: `2px solid ${isActive ? 'var(--brand)' : 'transparent'}`, cursor: 'pointer', fontSize: 13, fontWeight: isActive ? 600 : 400, color: isActive ? 'var(--brand)' : mfg, marginBottom: -1, transition: 'color 0.1s' }}>
+                
+                <i className={`fa-regular fa-${icons[tab]}`} style={{ fontSize: 12 }} />
+                {labels[tab]}
+              </button>);
+
+          })}
+        </div>
+
+        <div style={{ padding: '16px 24px 24px', maxHeight: '60vh', overflowY: 'auto' }}>
+
+          {activeTab === 'folder' &&
           <>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', border: '1px solid var(--border)', borderRadius: 8, marginBottom: 10 }}>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--foreground)' }}>Collaboration folder</div>
-                  <div style={{ fontSize: 12, color: 'var(--muted-foreground)', marginTop: 1 }}>Recipients receive updates when this folder changes</div>
+              {/* Info banner */}
+              <div style={{ padding: '10px 14px', background: '#faf5ff', border: '1px solid #e9d5ff', borderRadius: 8, marginBottom: 16, display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+                <i className="fa-regular fa-circle-info" style={{ fontSize: 13, color: '#7c3aed', marginTop: 1, flexShrink: 0 }} />
+                <div style={{ fontSize: 12, color: '#6b7280', lineHeight: 1.5 }}>
+                  <strong style={{ color: '#374151' }}>"{folderName}"</strong> — grant faculty access to this folder. Faculty with no access will not see it. Click the access badge to toggle view ↔ edit.
                 </div>
-                <ToggleSwitch on={collab} onToggle={() => setCollab((c) => !c)} />
               </div>
-              <div style={{ padding: '10px 12px', background: 'var(--sidebar-accent)', borderRadius: 7, fontSize: 12, color: 'var(--muted-foreground)', marginBottom: 16, lineHeight: 1.5 }}>
-                {collab ? <>Recipients see live updates. They cannot add/remove questions unless given <strong style={{ color: 'var(--foreground)' }}>edit</strong> access.</> : <>Recipients receive a <strong style={{ color: 'var(--foreground)' }}>static copy</strong>. Changes to this folder won't affect their copy.</>}
+
+              {/* Search + add faculty */}
+              <div style={{ marginBottom: 16, position: 'relative' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', border: '1px solid var(--border)', borderRadius: 8, background: 'var(--input-background)' }}>
+                  <i className="fa-regular fa-magnifying-glass" style={{ fontSize: 12, color: mfg, flexShrink: 0 }} />
+                  <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search faculty to add…" style={inp} />
+                  {search &&
+                <button onClick={() => setSearch('')} style={{ background: 'none', border: 'none', cursor: 'pointer', color: mfg, padding: 0, display: 'flex' }}>
+                      <i className="fa-regular fa-xmark" style={{ fontSize: 11 }} />
+                    </button>
+                }
+                </div>
+                {search && suggestions.length > 0 &&
+              <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, marginTop: 4, background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 8, boxShadow: '0 4px 16px rgba(0,0,0,0.1)', zIndex: 200, overflow: 'hidden' }}>
+                    {suggestions.map((f) =>
+                <div key={f.id} style={{ display: 'flex', gap: 0 }}>
+                        <button onMouseDown={() => grant(f.name, 'view')}
+                  style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 10, padding: '9px 14px', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left' }}
+                  onMouseEnter={(e) => e.currentTarget.style.background = 'var(--accent)'}
+                  onMouseLeave={(e) => e.currentTarget.style.background = 'none'}>
+                    
+                          <div style={{ width: 28, height: 28, borderRadius: '50%', background: f.color, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, color: 'white', flexShrink: 0 }}>{f.initials}</div>
+                          <div style={{ minWidth: 0 }}>
+                            <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--foreground)' }}>{f.name}</div>
+                            <div style={{ fontSize: 11, color: mfg }}>Click to grant view access</div>
+                          </div>
+                          <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 20, background: '#f0f9ff', color: '#0369a1', border: '1px solid #bae6fd', flexShrink: 0 }}>View</span>
+                        </button>
+                        <button onMouseDown={() => grant(f.name, 'edit')}
+                  style={{ padding: '9px 12px', background: 'none', border: 'none', borderLeft: '1px solid var(--border)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}
+                  title="Grant edit access"
+                  onMouseEnter={(e) => e.currentTarget.style.background = '#faf5ff'}
+                  onMouseLeave={(e) => e.currentTarget.style.background = 'none'}>
+                    
+                          <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 20, background: '#ede9fe', color: '#6d28d9', border: '1px solid #c4b5fd' }}>Edit</span>
+                        </button>
+                      </div>
+                )}
+                  </div>
+              }
+                {search && suggestions.length === 0 &&
+              <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, marginTop: 4, background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 8, boxShadow: '0 4px 16px rgba(0,0,0,0.1)', zIndex: 200, padding: '10px 14px', fontSize: 13, color: mfg }}>
+                    {allFaculty.some((f) => localAccess[f.name] && f.name.toLowerCase().includes(searchLower)) ? 'Already has access' : 'No faculty found'}
+                  </div>
+              }
+              </div>
+
+              {/* Faculty list */}
+              {currentlyAccessed.length > 0 ?
+            <>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: mfg, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>
+                    Faculty with access ({currentlyAccessed.length})
+                  </div>
+                  <div style={{ border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden' }}>
+                    {currentlyAccessed.map((f, i) => {
+                  const level = localAccess[f.name];
+                  const badge = accessBadge(level);
+                  return (
+                    <div key={f.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', borderBottom: i < currentlyAccessed.length - 1 ? '1px solid var(--border)' : 'none' }}>
+                          <div style={{ width: 32, height: 32, borderRadius: '50%', background: f.color, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, color: 'white', flexShrink: 0 }}>{f.initials}</div>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--foreground)' }}>{f.name}</div>
+                          </div>
+                          {/* Folder access badge */}
+                          <button
+                        onClick={() => toggleLevel(f.name)}
+                        title="Click to toggle view / edit"
+                        style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '3px 10px', borderRadius: 20, background: badge.bg, color: badge.text, border: `1px solid ${badge.border}`, fontSize: 11, fontWeight: 600, cursor: 'pointer', flexShrink: 0 }}>
+                        
+                            <i className={`fa-regular ${badge.icon}`} style={{ fontSize: 10 }} />
+                            {badge.label}
+                          </button>
+                          {/* Remove */}
+                          <button
+                        onClick={() => revoke(f.name)}
+                        title="Remove access"
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: mfg, padding: '3px 6px', borderRadius: 4, display: 'flex', flexShrink: 0 }}
+                        onMouseEnter={(e) => e.currentTarget.style.color = '#ef4444'}
+                        onMouseLeave={(e) => e.currentTarget.style.color = mfg}>
+                        
+                            <i className="fa-regular fa-xmark" style={{ fontSize: 13, lineHeight: 1 }} />
+                          </button>
+                        </div>);
+
+                })}
+                  </div>
+                </> :
+
+            <div style={{ padding: '20px 0', textAlign: 'center' }}>
+                  <i className="fa-regular fa-users" style={{ fontSize: 24, color: mfg, display: 'block', marginBottom: 8 }} />
+                  <div style={{ fontSize: 13, color: mfg }}>No faculty have access to this folder yet.</div>
+                  <div style={{ fontSize: 12, color: mfg, marginTop: 4 }}>Search above to grant access.</div>
+                </div>
+            }
+
+              {/* Legend */}
+              <div style={{ marginTop: 16, display: 'flex', gap: 12, alignItems: 'center' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: '#0369a1' }}>
+                  <i className="fa-regular fa-eye" style={{ fontSize: 10 }} /> View only — read &amp; shortlist
+                </div>
+                <div style={{ width: 3, height: 3, borderRadius: '50%', background: mfg }} />
+                <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: '#6d28d9' }}>
+                  <i className="fa-regular fa-pen" style={{ fontSize: 10 }} /> Can edit — full edit access
+                </div>
               </div>
             </>
           }
-          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-            <Btn label="Done" variant="primary" onClick={onClose} />
-          </div>
+
+          {activeTab === 'questions' &&
+          <>
+              {/* Info banner */}
+              <div style={{ padding: '10px 14px', background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 8, marginBottom: 16, display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+                <i className="fa-regular fa-shield-halved" style={{ fontSize: 13, color: '#059669', marginTop: 1, flexShrink: 0 }} />
+                <div style={{ fontSize: 12, color: '#374151', lineHeight: 1.5 }}>
+                  Control which questions faculty can see inside <strong>"{folderName}"</strong>. <strong>Approved only</strong> restricts to status-approved questions. <strong>All questions</strong> shows every status including draft, in-review, and flagged.
+                </div>
+              </div>
+
+              {currentlyAccessed.length > 0 ?
+            <>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: mfg, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>
+                    Question visibility per faculty
+                  </div>
+                  <div style={{ border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden' }}>
+                    {currentlyAccessed.map((f, i) => {
+                  const cur = statusMap[f.name] ?? 'approved';
+                  return (
+                    <div key={f.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', borderBottom: i < currentlyAccessed.length - 1 ? '1px solid var(--border)' : 'none' }}>
+                          <div style={{ width: 32, height: 32, borderRadius: '50%', background: f.color, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, color: 'white', flexShrink: 0 }}>{f.initials}</div>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--foreground)' }}>{f.name}</div>
+                            <div style={{ fontSize: 11, color: mfg, marginTop: 2 }}>
+                              {localAccess[f.name] === 'edit' ? 'Editor' : 'Viewer'}
+                            </div>
+                          </div>
+                          {/* Segmented control: Approved only vs All */}
+                          <div style={{ display: 'flex', background: '#f1f5f9', borderRadius: 8, padding: 3, gap: 2, flexShrink: 0 }}>
+                            <button
+                          onClick={() => setStatusMap((prev) => ({ ...prev, [f.name]: 'approved' }))}
+                          style={{
+                            padding: '4px 10px', borderRadius: 5, fontSize: 11, fontWeight: cur === 'approved' ? 700 : 400,
+                            border: 'none', cursor: 'pointer', transition: 'all 0.1s',
+                            background: cur === 'approved' ? 'white' : 'transparent',
+                            color: cur === 'approved' ? '#0369a1' : '#94a3b8',
+                            boxShadow: cur === 'approved' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none'
+                          }}>
+                          
+                              <i className="fa-regular fa-circle-check" style={{ fontSize: 9, marginRight: 4 }} />
+                              Approved
+                            </button>
+                            <button
+                          onClick={() => setStatusMap((prev) => ({ ...prev, [f.name]: 'all' }))}
+                          style={{
+                            padding: '4px 10px', borderRadius: 5, fontSize: 11, fontWeight: cur === 'all' ? 700 : 400,
+                            border: 'none', cursor: 'pointer', transition: 'all 0.1s',
+                            background: cur === 'all' ? 'white' : 'transparent',
+                            color: cur === 'all' ? '#059669' : '#94a3b8',
+                            boxShadow: cur === 'all' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none'
+                          }}>
+                          
+                              <i className="fa-regular fa-layer-group" style={{ fontSize: 9, marginRight: 4 }} />
+                              All
+                            </button>
+                          </div>
+                        </div>);
+
+                })}
+                  </div>
+                  <div style={{ marginTop: 12, padding: '8px 12px', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 7, fontSize: 12, color: '#92400e', display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+                    <i className="fa-regular fa-circle-info" style={{ fontSize: 11, marginTop: 1, flexShrink: 0, color: '#d97706' }} />
+                    <span>Question-level access (individual questions shared directly via Share Question) always overrides this folder setting.</span>
+                  </div>
+                </> :
+
+            <div style={{ padding: '20px 0', textAlign: 'center' }}>
+                  <i className="fa-regular fa-shield-halved" style={{ fontSize: 24, color: mfg, display: 'block', marginBottom: 8 }} />
+                  <div style={{ fontSize: 13, color: mfg }}>Add faculty in the Folder Access tab first.</div>
+                </div>
+            }
+            </>
+          }
+        </div>
+
+        <div style={{ padding: '14px 24px', borderTop: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 10, justifyContent: 'flex-end' }}>
+          {saved &&
+          <span style={{ fontSize: 12, color: '#059669', display: 'flex', alignItems: 'center', gap: 5, fontWeight: 600, marginRight: 'auto' }}>
+              <i className="fa-regular fa-circle-check" style={{ fontSize: 13 }} /> Access updated
+            </span>
+          }
+          <Btn label="Cancel" variant="ghost" onClick={onClose} />
+          <Btn label="Save" variant="primary" onClick={handleSave} />
         </div>
       </ModalCard>
     </Overlay>);

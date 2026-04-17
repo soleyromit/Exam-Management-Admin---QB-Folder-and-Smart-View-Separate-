@@ -1,17 +1,9 @@
 import { DEFAULT_CRITERIA } from './QBModals';
 import type { SmartCriteria } from './QBModals';
 
-// ── Types ──────────────────────────────────────────────────────────────────
+// ── Types ─────────────────────────────────────────────────────────────────────────────
 
-export type QStatus =
-'Active' |
-'Ready' |
-'In Review' |
-'Draft' |
-'Flagged' |
-'Approved' |
-'Locked';
-
+export type QStatus = 'Draft' | 'Saved';
 export type QType = 'MCQ' | 'Fill blank' | 'Hotspot' | 'Ordering' | 'Matching';
 export type QDiff = 'Easy' | 'Medium' | 'Hard';
 export type QBlooms =
@@ -21,6 +13,9 @@ export type QBlooms =
 'Analyze' |
 'Evaluate' |
 'Create';
+
+export type AccessLevel = 'view' | 'edit';
+export type TrustLevel = 'junior' | 'mid' | 'senior';
 
 export interface Question {
   id: string;
@@ -38,8 +33,9 @@ export interface Question {
   pbis: number | null;
   pbisDir: 'up' | 'down' | 'flat' | null;
   collaborator?: string;
-  // Original creator — preserved even when edited (never overwritten)
   creator?: string;
+  lastEditedBy?: string;
+  usedInSections?: string[];
 }
 
 export interface FolderNode {
@@ -48,17 +44,16 @@ export interface FolderNode {
   parentId: string | null;
   count: number;
   locked?: boolean;
-  // isCourse = true → real course where students register + assessments run
-  // Visual: graduation-cap icon + “Course” chip on root only
   isCourse?: boolean;
-  // isLifetimeRepo = true → root course folder that serves as the permanent
-  // multi-year question repository (e.g. all questions taught 2010–2026).
-  // When selected, activates the semester/year filter pill bar in the table header.
   isLifetimeRepo?: boolean;
-  // courseYear = semester label for course-instance sub-folders
-  // (e.g. 'Fall 2025', 'Fall 2026').
-  // Drives fa-calendar-days icon and populates the year filter pills.
+  isCourseOffering?: boolean;
   courseYear?: string;
+  section?: string;
+  isPrivateSpace?: boolean;
+  isQuestionSet?: boolean;
+  ownerPersonaId?: string;
+  collaborators?: string[];
+  workspaceMembers?: {name: string;role: 'admin' | 'faculty' | 'external';}[];
 }
 
 export interface SVItem {
@@ -68,223 +63,299 @@ export interface SVItem {
   isDefault?: boolean;
   autoUpdate: boolean;
   criteria: SmartCriteria;
-  // personal = true → only visible to the individual faculty who created it
   personal?: boolean;
+  isAdminView?: boolean;
+  author?: string;
 }
 
-// ── Sample questions ───────────────────────────────────────────────────────────────
+export interface FacultyAccessRecord {
+  folderIds: string[];
+  accessLevels: Record<string, AccessLevel>;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────────
+// QUESTIONS
+// ─────────────────────────────────────────────────────────────────────────────────
 
 export const QS: Question[] = [
+
+// ── Phar 101 · Fall 2026 workspace ───────────────────────────────────────────────
+
 {
-  id: 'q1', code: 'ANAT-021', version: 1, age: '2d ago',
-  title: 'Identify the coronary artery on the diagram that supplies the inferior wall of the heart.',
-  type: 'Hotspot', status: 'Approved', difficulty: 'Medium', blooms: 'Remember',
-  folder: 'Anatomy', tags: ['anatomy', 'cardiology', 'high-yield'], usage: 0, pbis: null, pbisDir: null,
-  collaborator: 'Dr. Patel', creator: 'Dr. Patel'
+  id: 'q1', code: 'PHR26-001', version: 2, age: '1d ago',
+  title: 'Which beta-1 selective adrenergic blocker is preferred in patients with concurrent reactive airway disease?',
+  type: 'MCQ', status: 'Saved', difficulty: 'Easy', blooms: 'Remember',
+  folder: 'Phar 101 (2026 batch)', tags: ['phar101'], usage: 5, pbis: 0.48, pbisDir: 'up',
+  creator: 'Dr. Patel', collaborator: 'Dr. Patel', lastEditedBy: 'Dr. Patel',
+  usedInSections: ['Section A', 'Section B']
 },
 {
-  id: 'q2', code: 'ANAT-022', version: 1, age: '2w ago',
-  title: 'Complete: The drug that selectively inhibits COX-2 is associated with increased risk of __ events.',
-  type: 'Fill blank', status: 'Draft', difficulty: 'Easy', blooms: 'Remember',
-  folder: 'Pharmacology', tags: ['pharmacology', 'NSAIDs'], usage: 0, pbis: null, pbisDir: null,
-  collaborator: 'Dr. Chen', creator: 'Dr. Chen'
+  id: 'q2', code: 'PHR26-002', version: 1, age: '3d ago',
+  title: 'A patient on warfarin presents with an INR of 8.2 and no active bleeding. The most appropriate next step is ___.',
+  type: 'Fill blank', status: 'Saved', difficulty: 'Hard', blooms: 'Evaluate',
+  folder: 'Phar 101 (2026 batch)', tags: ['phar101'], usage: 0, pbis: null, pbisDir: null,
+  creator: 'Dr. Patel', collaborator: 'Dr. Lee', lastEditedBy: 'Dr. Lee',
+  usedInSections: ['Section A']
 },
 {
-  id: 'q3', code: 'CRD-045', version: 3, age: '3d ago',
-  title: 'A 58yo male with exertional chest pain. ECG shows ST elevation in II, III, aVF. Which artery is occluded?',
-  type: 'MCQ', status: 'In Review', difficulty: 'Hard', blooms: 'Analyze',
-  folder: 'Cardiology', tags: ['cardiology', 'high-yield', 'clinical'], usage: 1, pbis: 0.52, pbisDir: 'up',
-  collaborator: 'Dr. Chen', creator: 'Dr. Ramirez'
+  id: 'q3', code: 'PHR26-003', version: 1, age: '2d ago',
+  title: 'Outline the mechanism by which ACE inhibitors reduce cardiac afterload in systolic heart failure.',
+  type: 'MCQ', status: 'Draft', difficulty: 'Medium', blooms: 'Understand',
+  folder: 'Phar 101 (2026 batch)', tags: ['phar101'], usage: 0, pbis: null, pbisDir: null,
+  creator: 'Dr. Patel', collaborator: 'Dr. Patel', lastEditedBy: 'Dr. Patel'
 },
 {
-  id: 'q4', code: 'CRD-046', version: 2, age: '5d ago',
-  title: 'Calculate the corrected QT interval for a patient with QT=440ms and HR=50bpm.',
-  type: 'Fill blank', status: 'Locked', difficulty: 'Hard', blooms: 'Apply',
-  folder: 'Cardiology', tags: ['cardiology', 'clinical'], usage: 6, pbis: 0.44, pbisDir: 'up',
-  collaborator: 'Dr. Lee', creator: 'Dr. Lee'
+  id: 'q4', code: 'PHR26-004', version: 1, age: '5d ago',
+  title: 'A 65-year-old with hypertension and stage 3 CKD. Which antihypertensive class provides renal protection?',
+  type: 'MCQ', status: 'Saved', difficulty: 'Medium', blooms: 'Apply',
+  folder: 'Phar 101 (2026 batch)', tags: ['phar101'], usage: 3, pbis: 0.41, pbisDir: 'up',
+  creator: 'Dr. Lee', collaborator: 'Dr. Lee', lastEditedBy: 'Dr. Lee',
+  usedInSections: ['Section B']
 },
 {
-  id: 'q5', code: 'NEUR-011', version: 1, age: '6h ago',
-  title: 'A patient presents with unilateral facial droop, arm weakness, and aphasia. Which cerebral artery is most likely occluded?',
-  type: 'MCQ', status: 'Active', difficulty: 'Hard', blooms: 'Analyze',
-  folder: 'Neurology', tags: ['neurology', 'stroke', 'high-yield'], usage: 1, pbis: 0.47, pbisDir: 'up',
-  collaborator: 'Dr. Patel', creator: 'Dr. Patel'
+  id: 'q5', code: 'PHR26-005', version: 2, age: '4d ago',
+  title: 'Identify the atrioventricular node on the cardiac conduction system diagram.',
+  type: 'Hotspot', status: 'Saved', difficulty: 'Easy', blooms: 'Remember',
+  folder: 'Phar 101 (2026 batch)', tags: ['phar101'], usage: 4, pbis: 0.36, pbisDir: 'flat',
+  creator: 'Dr. Ramirez', collaborator: 'Dr. Ramirez', lastEditedBy: 'Dr. Ramirez',
+  usedInSections: ['Section A']
 },
 {
-  id: 'q6', code: 'NEUR-012', version: 1, age: '2d ago',
-  title: 'Which finding on MRI best differentiates MS plaques from small vessel ischemic disease?',
+  id: 'q6', code: 'PHR26-006', version: 3, age: '1w ago',
+  title: 'Rank the following antihypertensive classes in order of first-line preference for isolated systolic hypertension in a 70-year-old.',
+  type: 'Ordering', status: 'Saved', difficulty: 'Hard', blooms: 'Evaluate',
+  folder: 'Phar 101 (2026 batch)', tags: ['phar101'], usage: 2, pbis: 0.44, pbisDir: 'up',
+  creator: 'Dr. Patel', collaborator: 'Dr. Chen', lastEditedBy: 'Dr. Chen',
+  usedInSections: ['Section A', 'Section B']
+},
+{
+  id: 'q7', code: 'PHR26-007', version: 1, age: '6d ago',
+  title: 'Amiodarone-induced thyrotoxicosis: which of the following mechanisms best explains Type II toxicosis?',
+  type: 'MCQ', status: 'Saved', difficulty: 'Hard', blooms: 'Analyze',
+  folder: 'Phar 101 (2026 batch)', tags: ['phar101'], usage: 1, pbis: 0.29, pbisDir: 'down',
+  creator: 'Dr. Lee', collaborator: 'Dr. Lee', lastEditedBy: 'Dr. Lee',
+  usedInSections: ['Section B']
+},
+{
+  id: 'qX1', code: 'PHR26-X01', version: 1, age: '1w ago',
+  title: 'Compare bisphosphonates vs. denosumab for pharmacological management of postmenopausal osteoporosis.',
+  type: 'MCQ', status: 'Saved', difficulty: 'Hard', blooms: 'Evaluate',
+  folder: 'Phar 101 (2026 batch)', tags: ['phar101', 'skel101'], usage: 2, pbis: 0.38, pbisDir: 'flat',
+  creator: 'Dr. Patel', collaborator: 'Dr. Ramirez', lastEditedBy: 'Dr. Ramirez'
+},
+
+// ── Biol 201 · Fall 2026 workspace ───────────────────────────────────────────────
+
+{
+  id: 'q10', code: 'BIO26-001', version: 1, age: '6h ago',
+  title: 'At which point on the O₂-Hb dissociation curve does a rightward shift most significantly affect peripheral tissue oxygen delivery?',
+  type: 'MCQ', status: 'Saved', difficulty: 'Hard', blooms: 'Analyze',
+  folder: 'Biol 201 (2026 batch)', tags: ['biol201'], usage: 1, pbis: 0.47, pbisDir: 'up',
+  creator: 'Dr. Patel', collaborator: 'Dr. Patel', lastEditedBy: 'Dr. Patel',
+  usedInSections: ['Section A']
+},
+{
+  id: 'q11', code: 'BIO26-002', version: 2, age: '2d ago',
+  title: 'Describe the Frank-Starling mechanism and explain how an increase in preload affects stroke volume.',
+  type: 'Fill blank', status: 'Saved', difficulty: 'Medium', blooms: 'Understand',
+  folder: 'Biol 201 (2026 batch)', tags: ['biol201'], usage: 3, pbis: 0.42, pbisDir: 'up',
+  creator: 'Dr. Chen', collaborator: 'Dr. Chen', lastEditedBy: 'Dr. Chen',
+  usedInSections: ['Section A', 'Section B']
+},
+{
+  id: 'q12', code: 'BIO26-003', version: 1, age: '4d ago',
+  title: 'A patient presents with sudden unilateral facial droop, arm weakness, and expressive aphasia. Which cerebral vessel is most likely occluded?',
+  type: 'MCQ', status: 'Saved', difficulty: 'Hard', blooms: 'Analyze',
+  folder: 'Biol 201 (2026 batch)', tags: ['biol201'], usage: 0, pbis: null, pbisDir: null,
+  creator: 'Dr. Kim', collaborator: 'Dr. Kim', lastEditedBy: 'Dr. Kim',
+  usedInSections: ['Section A']
+},
+{
+  id: 'q13', code: 'BIO26-004', version: 1, age: '3d ago',
+  title: 'Compare Type I vs Type II alveolar cells: structure, function, and role in ARDS pathophysiology.',
   type: 'MCQ', status: 'Draft', difficulty: 'Hard', blooms: 'Analyze',
-  folder: 'Neurology', tags: ['neurology', 'imaging'], usage: 0, pbis: null, pbisDir: null,
-  collaborator: 'Dr. Kim', creator: 'Dr. Kim'
+  folder: 'Biol 201 (2026 batch)', tags: ['biol201'], usage: 0, pbis: null, pbisDir: null,
+  creator: 'Dr. Chen', collaborator: 'Dr. Patel', lastEditedBy: 'Dr. Patel'
 },
 {
-  id: 'q7', code: 'PHR-101', version: 3, age: '2h ago',
-  title: 'Which beta-blocker is cardioselective and preferred in reactive airway disease?',
-  type: 'MCQ', status: 'Active', difficulty: 'Medium', blooms: 'Apply',
-  folder: 'Pharmacology', tags: ['pharmacology', 'cardiology', 'high-yield'], usage: 4, pbis: 0.41, pbisDir: 'up',
-  collaborator: 'Dr. Chen', creator: 'Dr. Chen'
+  id: 'q14', code: 'BIO26-005', version: 1, age: '5d ago',
+  title: 'Which MRI finding best differentiates MS plaques from small vessel ischemic disease in periventricular white matter?',
+  type: 'MCQ', status: 'Saved', difficulty: 'Hard', blooms: 'Analyze',
+  folder: 'Biol 201 (2026 batch)', tags: ['biol201'], usage: 2, pbis: 0.39, pbisDir: 'up',
+  creator: 'Dr. Kim', collaborator: 'Dr. Kim', lastEditedBy: 'Dr. Kim',
+  usedInSections: ['Section A']
 },
 {
-  id: 'q8', code: 'PHR-102', version: 1, age: '1w ago',
-  title: 'Mechanism of action of loop diuretics and their effect on serum electrolytes.',
-  type: 'MCQ', status: 'Ready', difficulty: 'Medium', blooms: 'Understand',
-  folder: 'Pharmacology', tags: ['pharmacology', 'renal'], usage: 2, pbis: 0.38, pbisDir: 'flat',
-  collaborator: 'Dr. Ramirez', creator: 'Dr. Ramirez'
+  id: 'q15', code: 'BIO26-006', version: 1, age: '3d ago',
+  title: 'Rank the following tissues in order of susceptibility to ischemic injury after 5 minutes of cardiac arrest: neurons, myocytes, hepatocytes, renal tubular cells.',
+  type: 'Ordering', status: 'Saved', difficulty: 'Medium', blooms: 'Apply',
+  folder: 'Biol 201 (2026 batch)', tags: ['biol201'], usage: 1, pbis: 0.31, pbisDir: 'flat',
+  creator: 'Dr. Patel', collaborator: 'Dr. Patel', lastEditedBy: 'Dr. Patel',
+  usedInSections: ['Section A']
+},
+
+// ── Skel 101 · Fall 2026 workspace ───────────────────────────────────────────────
+
+{
+  id: 'q20', code: 'SKL26-001', version: 1, age: '2d ago',
+  title: 'Which nerve structure is at highest risk of injury during the anterior approach to total hip replacement?',
+  type: 'MCQ', status: 'Saved', difficulty: 'Medium', blooms: 'Remember',
+  folder: 'Skel 101 (2026 batch)', tags: ['skel101'], usage: 2, pbis: 0.40, pbisDir: 'flat',
+  creator: 'Dr. Ramirez', collaborator: 'Dr. Ramirez', lastEditedBy: 'Dr. Ramirez',
+  usedInSections: ['Section A']
 },
 {
-  id: 'q9', code: 'PHR-103', version: 1, age: '3w ago',
-  title: 'Which ACE inhibitor is a prodrug and must be converted to its active form in the liver?',
-  type: 'MCQ', status: 'Approved', difficulty: 'Easy', blooms: 'Remember',
-  folder: 'Pharmacology', tags: ['pharmacology', 'clinical'], usage: 3, pbis: 0.29, pbisDir: 'down',
-  collaborator: 'Dr. Lee', creator: 'Dr. Lee'
+  id: 'q21', code: 'SKL26-002', version: 2, age: '5d ago',
+  title: 'Match each fracture type (greenstick, comminuted, spiral, stress) with its most common mechanism of injury.',
+  type: 'Matching', status: 'Saved', difficulty: 'Medium', blooms: 'Understand',
+  folder: 'Skel 101 (2026 batch)', tags: ['skel101'], usage: 3, pbis: 0.45, pbisDir: 'up',
+  creator: 'Dr. Ramirez', collaborator: 'Dr. Wells', lastEditedBy: 'Dr. Wells',
+  usedInSections: ['Section A']
 },
 {
-  id: 'q10', code: 'PHYS-031', version: 1, age: '4d ago',
-  title: 'Describe the Frank-Starling mechanism and its relationship to preload and cardiac output.',
-  type: 'Fill blank', status: 'In Review', difficulty: 'Medium', blooms: 'Understand',
-  folder: 'Physiology', tags: ['physiology', 'cardiology'], usage: 0, pbis: null, pbisDir: null,
-  collaborator: 'Dr. Kim', creator: 'Dr. Kim'
+  id: 'q22', code: 'SKL26-003', version: 1, age: '4d ago',
+  title: 'Identify the structure labeled "A" on the sagittal MRI of the knee joint at 30° flexion.',
+  type: 'Hotspot', status: 'Saved', difficulty: 'Medium', blooms: 'Remember',
+  folder: 'Skel 101 (2026 batch)', tags: ['skel101'], usage: 0, pbis: null, pbisDir: null,
+  creator: 'Dr. Chen', collaborator: 'Dr. Chen', lastEditedBy: 'Dr. Chen',
+  usedInSections: ['Section A']
 },
 {
-  id: 'q11', code: 'PHYS-032', version: 2, age: '1d ago',
-  title: 'At what point on the oxygen-hemoglobin dissociation curve does a rightward shift most clinically matter?',
-  type: 'MCQ', status: 'Active', difficulty: 'Hard', blooms: 'Analyze',
-  folder: 'Physiology', tags: ['physiology', 'high-yield', 'clinical'], usage: 5, pbis: 0.51, pbisDir: 'up',
-  collaborator: 'Dr. Patel', creator: 'Dr. Patel'
+  id: 'q23', code: 'SKL26-004', version: 1, age: '1d ago',
+  title: 'Explain the blood supply to the femoral head and why displaced femoral neck fractures commonly lead to avascular necrosis.',
+  type: 'MCQ', status: 'Draft', difficulty: 'Hard', blooms: 'Understand',
+  folder: 'Skel 101 (2026 batch)', tags: ['skel101'], usage: 0, pbis: null, pbisDir: null,
+  creator: 'Dr. Ramirez', collaborator: 'Dr. Ramirez', lastEditedBy: 'Dr. Ramirez'
 },
 {
-  id: 'q12', code: 'ANAT-030', version: 1, age: '5d ago',
-  title: 'Which nerve is at risk during anterior approach to the hip replacement?',
-  type: 'MCQ', status: 'Flagged', difficulty: 'Medium', blooms: 'Remember',
-  folder: 'Anatomy', tags: ['anatomy', 'orthopedics'], usage: 1, pbis: 0.18, pbisDir: 'down',
-  collaborator: 'Dr. Ramirez', creator: 'Dr. Ramirez'
-},
-{
-  id: 'q13', code: 'CRD-050', version: 1, age: '1w ago',
-  title: 'A patient on warfarin has an INR of 7.2 with no bleeding. What is the most appropriate management?',
-  type: 'MCQ', status: 'Draft', difficulty: 'Hard', blooms: 'Evaluate',
-  folder: 'Cardiology', tags: ['cardiology', 'anticoagulation', 'clinical'], usage: 0, pbis: null, pbisDir: null,
-  collaborator: 'Dr. Lee', creator: 'Dr. Lee'
-},
-{
-  id: 'q14', code: 'NEUR-015', version: 1, age: '3d ago',
-  title: 'Differentiate upper vs lower motor neuron lesions based on physical examination findings.',
-  type: 'Ordering', status: 'Ready', difficulty: 'Medium', blooms: 'Analyze',
-  folder: 'Neurology', tags: ['neurology', 'clinical'], usage: 0, pbis: null, pbisDir: null,
-  collaborator: 'Dr. Kim', creator: 'Dr. Kim'
-},
-{
-  id: 'q15', code: 'PHR-110', version: 1, age: '6d ago',
-  title: 'Rank the following antihypertensives by first-line preference in a diabetic patient with CKD.',
-  type: 'Ordering', status: 'Active', difficulty: 'Hard', blooms: 'Evaluate',
-  folder: 'Pharmacology', tags: ['pharmacology', 'clinical', 'high-yield'], usage: 2, pbis: 0.44, pbisDir: 'up',
-  collaborator: 'Dr. Patel', creator: 'Dr. Patel'
+  id: 'q24', code: 'SKL26-005', version: 1, age: '1w ago',
+  title: 'Which rotator cuff muscle is the primary dynamic stabilizer of the glenohumeral joint during overhead abduction?',
+  type: 'MCQ', status: 'Saved', difficulty: 'Easy', blooms: 'Remember',
+  folder: 'Skel 101 (2026 batch)', tags: ['skel101'], usage: 4, pbis: 0.33, pbisDir: 'flat',
+  creator: 'Dr. Kim', collaborator: 'Dr. Kim', lastEditedBy: 'Dr. Kim'
 }];
 
 
-// ── Folder / view seed data ───────────────────────────────────────────────────────────
-//
-// FOLDER HIERARCHY — 5 LEVELS DEEP (for tree nesting UX demo)
-//
-// Level 0: Root folders
-// Level 1: Children of root
-// Level 2: Grandchildren
-// Level 3: Great-grandchildren
-// Level 4: Great-great-grandchildren
-//
-// isCourse: true  → Real course (students registered, assessments run).
-//                   COURSE chip shown ONLY on root-level course folders.
-//                   Course-scoped access is FERPA-controlled separately from QB access.
-// isCourse: false → Pure QB library folder (no student activity).
-//
-// isLifetimeRepo: true → Root course folder that is the permanent question bank.
-//   Selecting it shows the semester/year filter pill bar so faculty can drill into
-//   a specific course offering (e.g. Fall 2025 vs Fall 2026).
-// courseYear: string → Semester label on course-instance sub-folders.
-//   Drives fa-calendar-days icon and year filter pill text.
+// ── Folder → question assignments ──────────────────────────────────────────────────────────────────
 
 export const INIT_ASSIGNMENTS: Record<string, string[]> = {
-  'f-pharm': ['q2', 'q7', 'q8', 'q15'],
-  'f-cardio': ['q3', 'q4', 'q13'],
-  'f-cardio-arr': ['q3', 'q4'],
-  'f-cardio-arr-na': ['q4'],
-  'f-cardio-arr-use': ['q4'],
-  'f-cardio-hf': ['q13'],
-  'f-renal': ['q9'],
-  'f-renal-loop': ['q9'],
-  'f-courses': ['q12'],
-  'f-c1': ['q5', 'q6'],
-  'f-c2': ['q10', 'q11'],
-  'f-audit': ['q3', 'q4']
+  'f-phar101': ['q1', 'q2', 'q3', 'q4', 'q5', 'q6', 'q7', 'qX1'],
+  'f-phar-2026': ['q1', 'q2', 'q5', 'q6'],
+  'f-phar-u1': ['q1', 'q2'],
+  'f-phar-abs': ['q1'],
+  'f-phar-oral': ['q1'],
+  'f-phar-iv': ['q2'],
+  'f-phar-dist': ['q5'],
+  'f-phar-u2': ['q6'],
+  'f-biol201': ['q10', 'q11', 'q12', 'q13', 'q14', 'q15'],
+  'f-biol-2026': ['q10', 'q11', 'q12', 'q14', 'q15'],
+  'f-biol-u1': ['q10', 'q11'],
+  'f-biol-mem': ['q10', 'q11'],
+  'f-biol-act': ['q10'],
+  'f-biol-pas': ['q11'],
+  'f-skel101': ['q20', 'q21', 'q22', 'q23', 'q24'],
+  'f-skel-sec-a': ['q20', 'q21', 'q22'],
+  'f-phar-qset1': ['q1', 'q6'],
+  'f-phar-qset2': ['q2', 'q7', 'qX1'],
+  'f-biol-qset1': ['q10', 'q12']
 };
 
-export const INIT_AUDIT_VER: Record<string, Record<string, number>> = {
-  'f-audit': { q3: 1, q4: 1 }
-};
+// ── Folder nodes ──────────────────────────────────────────────────────────────────────────────
 
 export const INIT_FOLDERS: FolderNode[] = [
-// ── QB Library: PHAR 101 — 5-level deep hierarchy ────────────────────────────────────
-// L0
-{ id: 'f-pharm', name: 'PHAR 101 — Pharmacology', parentId: null, count: 7, isCourse: false },
-// L1
-{ id: 'f-cardio', name: 'Cardiovascular', parentId: 'f-pharm', count: 5, isCourse: false },
-{ id: 'f-renal', name: 'Renal & Fluid', parentId: 'f-pharm', count: 2, isCourse: false },
-// L2 — Cardiovascular children
-{ id: 'f-cardio-arr', name: 'Arrhythmias', parentId: 'f-cardio', count: 3, isCourse: false },
-{ id: 'f-cardio-hf', name: 'Heart Failure', parentId: 'f-cardio', count: 2, isCourse: false },
-// L2 — Renal children
-{ id: 'f-renal-loop', name: 'Loop Diuretics', parentId: 'f-renal', count: 1, isCourse: false },
-// L3 — Arrhythmias children
-{ id: 'f-cardio-arr-na', name: 'Na\u207a Channel Blockers', parentId: 'f-cardio-arr', count: 2, isCourse: false },
-// L4 — Na+ Channel Blockers children (deepest level demo)
-{ id: 'f-cardio-arr-use', name: 'Clinical Use Cases', parentId: 'f-cardio-arr-na', count: 1, isCourse: false },
+// ── Phar 101 ───────────────────────────────────────────────────────────────────────
+{
+  id: 'f-phar101', name: 'Phar 101', parentId: null, count: 8,
+  isCourse: true, isLifetimeRepo: true
+},
+{
+  id: 'f-phar-2026', name: 'Fall 2026', parentId: 'f-phar101', count: 4,
+  isCourseOffering: true,
+  workspaceMembers: [
+  { name: 'Admin', role: 'admin' },
+  { name: 'Dr. Patel', role: 'faculty' },
+  { name: 'Dr. Lee', role: 'faculty' },
+  { name: 'Dr. Chen', role: 'faculty' },
+  { name: 'Dr. Ramirez', role: 'faculty' },
+  { name: 'Dr. Wells', role: 'external' }]
 
-// ── Real course folders (isCourse = true) ────────────────────────────────────────────────
-// COURSE chip appears ONLY on L0 course folders — not on section sub-folders.
-// isLifetimeRepo: true → triggers semester filter pill bar when this folder is selected.
-// courseYear → semester instance; drives fa-calendar-days icon.
-{ id: 'f-courses', name: 'BIOL 201 — Foundations', parentId: null, count: 4, isCourse: true, isLifetimeRepo: true },
-{ id: 'f-c1', name: 'Fall 2025 — Section A', parentId: 'f-courses', count: 2, isCourse: true, courseYear: 'Fall 2025' },
-{ id: 'f-c2', name: 'Fall 2026 — Section A', parentId: 'f-courses', count: 2, isCourse: true, courseYear: 'Fall 2026' },
+},
+{ id: 'f-phar-u1', name: 'Unit 1: Pharmacokinetics', parentId: 'f-phar-2026', count: 3 },
+{ id: 'f-phar-abs', name: 'Absorption', parentId: 'f-phar-u1', count: 2 },
+{ id: 'f-phar-oral', name: 'Oral Absorption', parentId: 'f-phar-abs', count: 1 },
+{ id: 'f-phar-iv', name: 'IV Administration', parentId: 'f-phar-abs', count: 1 },
+{ id: 'f-phar-dist', name: 'Distribution', parentId: 'f-phar-u1', count: 1 },
+{ id: 'f-phar-u2', name: 'Unit 2: Pharmacodynamics', parentId: 'f-phar-2026', count: 1 },
+{ id: 'f-phar-qset1', name: 'Cardio Exam Set', parentId: 'f-phar-2026', count: 2, isQuestionSet: true, collaborators: ['Dr. Patel', 'Dr. Chen'] },
+{ id: 'f-phar-qset2', name: 'Midterm Prep Set', parentId: 'f-phar-2026', count: 3, isQuestionSet: true, collaborators: ['Dr. Lee', 'Dr. Ramirez'] },
 
-// ── Locked audit snapshot ─────────────────────────────────────────────────────────────
-{ id: 'f-audit', name: '2024 Cardiology Audit', parentId: null, count: 2, locked: true, isCourse: false }];
+// ── Biol 201 ───────────────────────────────────────────────────────────────────────
+{
+  id: 'f-biol201', name: 'Biol 201', parentId: null, count: 6,
+  isCourse: true, isLifetimeRepo: true
+},
+{
+  id: 'f-biol-2026', name: 'Fall 2026', parentId: 'f-biol201', count: 5,
+  isCourseOffering: true,
+  workspaceMembers: [
+  { name: 'Admin', role: 'admin' },
+  { name: 'Dr. Chen', role: 'faculty' },
+  { name: 'Dr. Kim', role: 'faculty' },
+  { name: 'Dr. Patel', role: 'faculty' }]
 
+},
+{ id: 'f-biol-u1', name: 'Unit 1: Cell Biology', parentId: 'f-biol-2026', count: 2 },
+{ id: 'f-biol-mem', name: 'Membrane Transport', parentId: 'f-biol-u1', count: 2 },
+{ id: 'f-biol-act', name: 'Active Transport', parentId: 'f-biol-mem', count: 1 },
+{ id: 'f-biol-pas', name: 'Passive Diffusion', parentId: 'f-biol-mem', count: 1 },
+{ id: 'f-biol-qset1', name: 'Neuro Exam Set', parentId: 'f-biol-2026', count: 2, isQuestionSet: true, collaborators: ['Dr. Chen', 'Dr. Kim'] },
+
+// ── Skel 101 ───────────────────────────────────────────────────────────────────────
+{
+  id: 'f-skel101', name: 'Skel 101', parentId: null, count: 5,
+  isCourse: true, isLifetimeRepo: true
+},
+{
+  id: 'f-skel-sec-a', name: 'Fall 2026', parentId: 'f-skel101', count: 3,
+  isCourseOffering: true,
+  workspaceMembers: [
+  { name: 'Admin', role: 'admin' },
+  { name: 'Dr. Ramirez', role: 'faculty' },
+  { name: 'Dr. Wells', role: 'faculty' }]
+
+}];
+
+
+// ── Smart Views ────────────────────────────────────────────────────────────────────────────
 
 export const INIT_VIEWS: SVItem[] = [
 {
-  id: 'sv-disc', name: 'Low Discrimination', count: 2, isDefault: true, autoUpdate: true,
-  criteria: { ...DEFAULT_CRITERIA, pbis: 'very-low' }, personal: false
+  id: 'sv-disc', name: 'Low Discrimination', count: 3, isDefault: true, autoUpdate: true,
+  criteria: { ...DEFAULT_CRITERIA, pbis: 'very-low' }, personal: false, isAdminView: true
 },
 {
-  id: 'sv-never', name: 'Never Used', count: 6, isDefault: true, autoUpdate: true,
-  criteria: { ...DEFAULT_CRITERIA, usage: 'never' }, personal: false
+  id: 'sv-never', name: 'Never Used', count: 7, isDefault: true, autoUpdate: true,
+  criteria: { ...DEFAULT_CRITERIA, usage: 'never' }, personal: false, isAdminView: true
 },
 {
-  id: 'sv-hard', name: 'High Difficulty', count: 7, isDefault: true, autoUpdate: true,
-  criteria: { ...DEFAULT_CRITERIA, difficulties: ['Hard'] }, personal: false
+  id: 'sv-hard', name: 'High Difficulty', count: 9, isDefault: true, autoUpdate: true,
+  criteria: { ...DEFAULT_CRITERIA, difficulties: ['Hard'] }, personal: false, isAdminView: true
 },
 {
-  id: 'sv-pharm', name: 'Active — Pharm', count: 5, isDefault: false, autoUpdate: false,
-  criteria: { ...DEFAULT_CRITERIA, autoUpdate: false }, personal: false
+  id: 'sv-saved', name: 'All Saved', count: 19, isDefault: false, autoUpdate: true,
+  criteria: { ...DEFAULT_CRITERIA, autoUpdate: true }, personal: false
 },
-// Personal smart view — only visible to the individual faculty member
 {
-  id: 'sv-my-hard', name: 'My Hard Questions', count: 3, isDefault: false, autoUpdate: true,
+  id: 'sv-my-hard', name: 'My Hard Questions', count: 4, isDefault: false, autoUpdate: true,
   criteria: { ...DEFAULT_CRITERIA, difficulties: ['Hard'], autoUpdate: true }, personal: true
 }];
 
 
-// ── Badge colour configs ─────────────────────────────────────────────────────────────────
+// ── Badge colour configs ───────────────────────────────────────────────────────────────────────────
 
 export const S_CFG: Record<QStatus, {dot: string;text: string;bg: string;}> = {
-  Active: { dot: '#16a34a', text: '#15803d', bg: '#dcfce7' },
-  Ready: { dot: '#2563eb', text: '#1d4ed8', bg: '#dbeafe' },
-  'In Review': { dot: '#d97706', text: '#a16207', bg: '#fef3c7' },
-  Draft: { dot: '#94a3b8', text: '#475569', bg: '#f1f5f9' },
-  Flagged: { dot: '#dc2626', text: '#b91c1c', bg: '#fee2e2' },
-  Approved: { dot: '#7c3aed', text: '#6d28d9', bg: '#ede9fe' },
-  Locked: { dot: '#9ca3af', text: '#6b7280', bg: '#f8fafc' }
+  Saved: { dot: '#0d9488', text: '#0f766e', bg: '#ccfbf1' },
+  Draft: { dot: '#94a3b8', text: '#475569', bg: '#f1f5f9' }
 };
 
 export const T_CFG: Record<QType, {bg: string;color: string;}> = {
